@@ -1,0 +1,24 @@
+# Pipeline dữ liệu Vision AI — chỉ gồm thư viện scripts/ thực sự import.
+
+# 00 tải dữ liệu
+kaggle
+
+# 01 lấy mẫu + upload MinIO
+minio
+pillow
+
+# 03 gán nhãn sơ bộ YOLO26
+ultralytics
+
+# 04, 05 đánh giá và đóng gói nhãn
+numpy
+
+# 06, 07 CVAT
+cvat-sdk
+cvat-cli
+
+# 07 phát hành + quản lý phiên bản
+dvc[s3]
+
+# chung
+pyyaml

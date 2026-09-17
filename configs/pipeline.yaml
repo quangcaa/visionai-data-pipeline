@@ -1,0 +1,28 @@
+# Cấu hình pipeline dữ liệu — KHÔNG hard-code tham số trong script (nguyên tắc 6, docx).
+
+paths:
+  detrac_images: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images
+  detrac_annotations: data/raw/ua-detrac/DETRAC-Train-Annotations-XML/DETRAC-Train-Annotations-XML
+  work_dir: data/prototype
+
+# Tập con dùng cho prototype: mỗi sequence = 1 camera, phủ đủ 4 điều kiện thời tiết.
+cameras:
+  - {camera_id: cam01, sequence: MVI_20011}   # sunny
+  - {camera_id: cam02, sequence: MVI_40131}   # cloudy
+  - {camera_id: cam03, sequence: MVI_39761}   # night
+  - {camera_id: cam04, sequence: MVI_63521}   # rainy
+
+sampling:
+  source_fps: 25          # UA-DETRAC quay ở 25 fps
+  sample_every_n: 25      # lấy 1 frame mỗi 25 frame ~ 1 ảnh/giây
+  max_per_camera: 50      # giới hạn cho prototype chạy CPU
+  start_frame: 1          # DETRAC đánh số frame từ 1 (img00001.jpg)
+
+storage:
+  bucket_raw_frames: raw-frames
+  endpoint: localhost:9000
+  secure: false
+
+labeling:
+  # Phiên bản guideline đang áp dụng (docs/labeling_guideline.md). Ghi vào từng ảnh khi phát hành.
+  guideline_version: "1.0"

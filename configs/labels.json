@@ -1,0 +1,6 @@
+[
+  {"name": "car",    "type": "rectangle", "attributes": []},
+  {"name": "bus",    "type": "rectangle", "attributes": []},
+  {"name": "van",    "type": "rectangle", "attributes": []},
+  {"name": "others", "type": "rectangle", "attributes": []}
+]

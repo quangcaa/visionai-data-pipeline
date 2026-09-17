@@ -1,0 +1,19 @@
+# Dữ liệu — quản lý bằng DVC/MinIO, không đưa vào Git
+data/
+dataset/
+*.mp4
+
+# Bí mật
+.env
+
+# Môi trường & file sinh ra
+.venv/
+__pycache__/
+*.pyc
+
+# Trọng số model (Ultralytics tự tải khi chạy)
+*.pt
+runs/
+
+# Artifact của từng lần chạy trên máy local
+reports/

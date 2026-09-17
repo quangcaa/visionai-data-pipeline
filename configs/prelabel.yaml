@@ -1,0 +1,18 @@
+# Bước 2 — gán nhãn sơ bộ. Mọi tham số ở đây, không hard-code trong script.
+
+model: yolo26n.pt        # Ultralytics tự tải về lần chạy đầu
+conf: 0.25               # ngưỡng tin cậy tối thiểu
+iou: 0.7                 # ngưỡng NMS
+imgsz: 960               # ảnh DETRAC là 960x540
+device: cpu              # máy không có GPU NVIDIA
+max_det: 100
+
+# Ánh xạ lớp COCO (id trong model pretrained) -> lớp DETRAC.
+# COCO không có 'van' nên 'truck' được quy về 'van' (xe tải nhỏ/van là lớp gần nhất).
+# Ánh xạ này là gần đúng, chính là một lý do bắt buộc phải có người sửa ở Bước 3.
+class_map:
+  2: car          # COCO car
+  5: bus          # COCO bus
+  7: van          # COCO truck  -> van
+  3: others       # COCO motorcycle
+  1: others       # COCO bicycle

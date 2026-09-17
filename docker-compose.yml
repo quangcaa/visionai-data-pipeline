@@ -1,0 +1,51 @@
+# Hạ tầng lưu trữ cho pipeline dữ liệu.
+# CVAT chạy bằng compose riêng ở third_party/cvat (xem docs/INSTALL_GUIDE.md).
+#
+#   docker compose up -d        # khởi động
+#   docker compose ps           # kiểm tra
+#   docker compose down         # dừng (dữ liệu vẫn còn trong volume minio-data)
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: vdp_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # Web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - default
+      # Bỏ comment sau khi CVAT đã chạy, để CVAT truy cập được http://minio:9000.
+      # Kiểm tra tên network thật bằng: docker network ls | grep cvat
+      # - cvat
+
+  # Giả lập camera RTSP từ video DETRAC (Bước 1, bản đầy đủ).
+  # Prototype hiện lấy mẫu offline nên chưa cần, bật khi làm Phase 3.
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: vdp_mediamtx
+    ports:
+      - "8554:8554"   # RTSP
+      - "9997:9997"   # API
+    restart: unless-stopped
+    profiles: ["rtsp"]   # chỉ chạy khi: docker compose --profile rtsp up -d
+
+volumes:
+  minio-data:
+
+networks:
+  default:
+  # cvat:
+  #   external: true
+  #   name: cvat_cvat
