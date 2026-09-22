@@ -11,16 +11,14 @@ Dùng:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-import yaml
 from PIL import Image, ImageDraw
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from _common import REPO_ROOT, load_yaml
 
 
 def main() -> None:
-    cfg = yaml.safe_load((REPO_ROOT / "configs" / "pipeline.yaml").read_text(encoding="utf-8"))
+    cfg = load_yaml(REPO_ROOT / "configs" / "pipeline.yaml")
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     scenes = json.loads((work / "scenes.json").read_text(encoding="utf-8"))
     out_dir = REPO_ROOT / "docs" / "ignored_regions"

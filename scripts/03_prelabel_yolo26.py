@@ -28,9 +28,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import REPO_ROOT, load_label_spec, load_yaml
 
 
 def log(msg: str) -> None:
@@ -50,8 +48,8 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="ghi đè nhãn sơ bộ đã có")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
-    pcfg = yaml.safe_load(args.prelabel_config.read_text(encoding="utf-8"))
+    cfg = load_yaml(args.config)
+    pcfg = load_yaml(args.prelabel_config)
 
     work_dir = REPO_ROOT / cfg["paths"]["work_dir"]
     img_dir = work_dir / "images"
@@ -63,7 +61,7 @@ def main() -> None:
         die(f"Đã có nhãn sơ bộ ở {out_dir}. Dùng --force để chạy lại.")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    classes = [item["name"] for item in json.loads(args.labels.read_text(encoding="utf-8"))]
+    classes = load_label_spec(args.labels)
     class_id = {name: i for i, name in enumerate(classes)}
 
     # COCO id -> chỉ số lớp DETRAC

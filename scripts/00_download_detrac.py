@@ -21,7 +21,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import REPO_ROOT, load_dotenv
+
 DEFAULT_SLUG = "bratjay/ua-detrac-orig"
 DEST_DIR = REPO_ROOT / "data" / "raw" / "ua-detrac"
 ZIP_DIR = REPO_ROOT / "data" / "downloads"
@@ -34,21 +35,6 @@ def log(msg: str) -> None:
 def die(msg: str) -> None:
     print(f"[detrac] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
-
-
-def load_dotenv(path: Path) -> None:
-    """Nạp các biến KAGGLE_* từ .env vào môi trường (không ghi đè biến đã có)."""
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key, value = key.strip(), value.strip().strip("'\"")
-        if value and key not in os.environ:
-            os.environ[key] = value
-    log(f"Đã nạp biến môi trường từ {path.name}")
 
 
 def has_credentials() -> bool:
@@ -104,6 +90,7 @@ def main() -> None:
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
+    log(f"Đã nạp biến môi trường từ .env")
 
     if args.dest.is_dir() and any(args.dest.iterdir()) and not args.force:
         log(f"Đã có dữ liệu tại {args.dest} — bỏ qua (dùng --force để tải lại).")

@@ -19,7 +19,6 @@ Dùng:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import sys
@@ -30,7 +29,7 @@ from pathlib import Path
 import yaml
 from PIL import Image
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import REPO_ROOT, load_dotenv, sha256_of
 
 
 def log(msg: str) -> None:
@@ -40,14 +39,6 @@ def log(msg: str) -> None:
 def die(msg: str) -> None:
     print(f"[sample] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def read_sequence_attrs(xml_path: Path) -> dict:
@@ -171,14 +162,7 @@ def upload_to_minio(cfg: dict, img_dir: Path, records: list, batch_id: str) -> N
     except ImportError:
         die("Chưa cài thư viện minio: pip install minio")
 
-    import os
-
-    env_path = REPO_ROOT / ".env"
-    if env_path.is_file():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            if "=" in line and not line.strip().startswith("#"):
-                k, _, v = line.partition("=")
-                os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+    load_dotenv()
 
     st = cfg["storage"]
     user = os.environ.get("MINIO_ROOT_USER")

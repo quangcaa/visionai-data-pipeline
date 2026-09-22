@@ -25,9 +25,9 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import (REPO_ROOT, boxes_in_ignored, load_label_spec,
+                     load_yolo, load_yaml, yolo_to_xyxy)
 
 
 def log(msg: str) -> None:
@@ -37,14 +37,6 @@ def log(msg: str) -> None:
 def die(msg: str) -> None:
     print(f"[eval] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
-
-
-def yolo_to_xyxy(arr: np.ndarray, w: int, h: int) -> np.ndarray:
-    """cx,cy,w,h chuẩn hoá -> x1,y1,x2,y2 pixel."""
-    if arr.size == 0:
-        return np.zeros((0, 4))
-    cx, cy, bw, bh = arr[:, 0] * w, arr[:, 1] * h, arr[:, 2] * w, arr[:, 3] * h
-    return np.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], axis=1)
 
 
 def iou_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -59,19 +51,6 @@ def iou_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     area_a = (a[:, 2] - a[:, 0]) * (a[:, 3] - a[:, 1])
     area_b = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
     return inter / np.clip(area_a[:, None] + area_b[None, :] - inter, 1e-9, None)
-
-
-def inside_ignored(pred: np.ndarray, regions: np.ndarray, thr: float) -> np.ndarray:
-    """True nếu phần lớn diện tích box dự đoán nằm trong một vùng bỏ qua."""
-    if pred.size == 0 or regions.size == 0:
-        return np.zeros(len(pred), dtype=bool)
-    x1 = np.maximum(pred[:, None, 0], regions[None, :, 0])
-    y1 = np.maximum(pred[:, None, 1], regions[None, :, 1])
-    x2 = np.minimum(pred[:, None, 2], regions[None, :, 2])
-    y2 = np.minimum(pred[:, None, 3], regions[None, :, 3])
-    inter = np.clip(x2 - x1, 0, None) * np.clip(y2 - y1, 0, None)
-    area = np.clip((pred[:, 2] - pred[:, 0]) * (pred[:, 3] - pred[:, 1]), 1e-9, None)
-    return (inter / area[:, None]).max(axis=1) >= thr
 
 
 def average_precision(tp: np.ndarray, conf: np.ndarray, n_gt: int) -> float:
@@ -118,9 +97,9 @@ def main() -> None:
     ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
-    ecfg = yaml.safe_load(args.eval_config.read_text(encoding="utf-8"))
-    classes = [i["name"] for i in json.loads(args.labels.read_text(encoding="utf-8"))]
+    cfg = load_yaml(args.config)
+    ecfg = load_yaml(args.eval_config)
+    classes = load_label_spec(args.labels)
 
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     gt_dir, pred_dir = work / "gt", work / "prelabels"
@@ -154,9 +133,9 @@ def main() -> None:
             n_no_gt += 1      # đoạn DETRAC không gán nhãn: không có đáp án để chấm
             continue
 
-        g = np.loadtxt(gt_dir / f"{stem}.txt", ndmin=2) if (gt_dir / f"{stem}.txt").stat().st_size else np.zeros((0, 5))
+        g = load_yolo(gt_dir / f"{stem}.txt", 5)
         p_file = pred_dir / f"{stem}.txt"
-        p = np.loadtxt(p_file, ndmin=2) if p_file.stat().st_size else np.zeros((0, 6))
+        p = load_yolo(p_file, 6)
 
         gt_cls = g[:, 0].astype(int) if len(g) else np.zeros(0, dtype=int)
         gt_box = yolo_to_xyxy(g[:, 1:5], w, h) if len(g) else np.zeros((0, 4))
@@ -168,7 +147,7 @@ def main() -> None:
             regs = scenes[r["sequence_id"]]["ignored_regions"]
             reg_box = np.array([[x["left"], x["top"], x["left"] + x["width"], x["top"] + x["height"]]
                                 for x in regs]) if regs else np.zeros((0, 4))
-            keep = ~inside_ignored(pr_box, reg_box, ig_thr)
+            keep = ~boxes_in_ignored(pr_box, reg_box, ig_thr)
             n_ignored_preds += int((~keep).sum())
             pr_cls, pr_box, pr_conf = pr_cls[keep], pr_box[keep], pr_conf[keep]
 

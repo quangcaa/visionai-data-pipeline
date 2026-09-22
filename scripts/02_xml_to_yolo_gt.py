@@ -20,9 +20,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import yaml
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import REPO_ROOT, load_label_spec, load_yaml
 
 
 def log(msg: str) -> None:
@@ -32,11 +30,6 @@ def log(msg: str) -> None:
 def die(msg: str) -> None:
     print(f"[gt] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
-
-
-def load_label_spec(path: Path) -> list[str]:
-    """Thứ tự lớp lấy từ configs/labels.json — dùng chung cho GT, prelabel và CVAT."""
-    return [item["name"] for item in json.loads(path.read_text(encoding="utf-8"))]
 
 
 def parse_sequence_targets(xml_path: Path) -> dict[int, list[dict]]:
@@ -86,7 +79,7 @@ def main() -> None:
     ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
+    cfg = load_yaml(args.config)
     work_dir = REPO_ROOT / cfg["paths"]["work_dir"]
     ann_root = REPO_ROOT / cfg["paths"]["detrac_annotations"]
 

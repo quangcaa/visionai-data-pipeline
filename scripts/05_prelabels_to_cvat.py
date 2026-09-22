@@ -25,9 +25,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import (REPO_ROOT, boxes_in_ignored, load_label_spec,
+                     load_yaml, yolo_to_xyxy)
 
 
 def log(msg: str) -> None:
@@ -37,19 +37,6 @@ def log(msg: str) -> None:
 def die(msg: str) -> None:
     print(f"[to-cvat] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
-
-
-def inside_ignored(pred_xyxy: np.ndarray, regions: np.ndarray, thr: float) -> np.ndarray:
-    """True nếu >= thr diện tích box nằm trong một vùng bỏ qua."""
-    if pred_xyxy.size == 0 or regions.size == 0:
-        return np.zeros(len(pred_xyxy), dtype=bool)
-    x1 = np.maximum(pred_xyxy[:, None, 0], regions[None, :, 0])
-    y1 = np.maximum(pred_xyxy[:, None, 1], regions[None, :, 1])
-    x2 = np.minimum(pred_xyxy[:, None, 2], regions[None, :, 2])
-    y2 = np.minimum(pred_xyxy[:, None, 3], regions[None, :, 3])
-    inter = np.clip(x2 - x1, 0, None) * np.clip(y2 - y1, 0, None)
-    area = np.clip((pred_xyxy[:, 2] - pred_xyxy[:, 0]) * (pred_xyxy[:, 3] - pred_xyxy[:, 1]), 1e-9, None)
-    return (inter / area[:, None]).max(axis=1) >= thr
 
 
 def main() -> None:
@@ -64,9 +51,9 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
 
-    cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
-    ecfg = yaml.safe_load(args.eval_config.read_text(encoding="utf-8"))
-    classes = [i["name"] for i in json.loads(args.labels.read_text(encoding="utf-8"))]
+    cfg = load_yaml(args.config)
+    ecfg = load_yaml(args.eval_config)
+    classes = load_label_spec(args.labels)
 
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     pred_dir = work / "prelabels"
@@ -109,9 +96,8 @@ def main() -> None:
         p = np.loadtxt(p_file, ndmin=2)
 
         cls = p[:, 0].astype(int)
-        cx, cy, bw, bh = p[:, 1] * w, p[:, 2] * h, p[:, 3] * w, p[:, 4] * h
         conf = p[:, 5]
-        xyxy = np.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], axis=1)
+        xyxy = yolo_to_xyxy(p[:, 1:5], w, h)
 
         keep = conf >= min_conf
         n_dropped_conf += int((~keep).sum())
@@ -120,7 +106,7 @@ def main() -> None:
             regs = scenes[r["sequence_id"]]["ignored_regions"]
             reg_box = np.array([[x["left"], x["top"], x["left"] + x["width"], x["top"] + x["height"]]
                                 for x in regs]) if regs else np.zeros((0, 4))
-            in_ig = inside_ignored(xyxy, reg_box, ig_thr)
+            in_ig = boxes_in_ignored(xyxy, reg_box, ig_thr)
             n_dropped_ignored += int((keep & in_ig).sum())
             keep &= ~in_ig
 

@@ -26,9 +26,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import REPO_ROOT, load_dotenv, load_yaml
 
 
 def log(msg: str) -> None:
@@ -38,16 +36,6 @@ def log(msg: str) -> None:
 def die(msg: str) -> None:
     print(f"[cvat] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
-
-
-def load_dotenv(path: Path) -> None:
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 
 
 def filter_coco_zip(src_zip: Path, keep_names: set[str], dst_zip: Path) -> tuple[int, int]:
@@ -91,7 +79,7 @@ def main() -> None:
     if not user or not password:
         die("Thiếu CVAT_USER / CVAT_PASSWORD trong .env (tài khoản tạo bằng createsuperuser)")
 
-    cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
+    cfg = load_yaml(args.config)
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     img_dir = work / "images"
 

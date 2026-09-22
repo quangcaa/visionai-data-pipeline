@@ -22,7 +22,6 @@ Dùng:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -34,9 +33,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from _common import REPO_ROOT, load_dotenv, load_yaml, sha256_of
 DATASET_NAME = "ua-detrac-vehicle-detection"
 
 
@@ -47,24 +44,6 @@ def log(msg: str) -> None:
 def die(msg: str) -> None:
     print(f"[release] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
-
-
-def load_dotenv(path: Path) -> None:
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def git_commit() -> str | None:
@@ -107,7 +86,7 @@ def main() -> None:
     if not user or not password:
         die("Thiếu CVAT_USER / CVAT_PASSWORD trong .env")
 
-    cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
+    cfg = load_yaml(args.config)
     classes = [i["name"] for i in json.loads(args.labels.read_text(encoding="utf-8"))]
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     img_dir = work / "images"
