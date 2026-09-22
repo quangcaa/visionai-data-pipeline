@@ -1,6 +1,6 @@
 # Bước 2 — gán nhãn sơ bộ. Mọi tham số ở đây, không hard-code trong script.
 
-model: yolo26n.pt        # Ultralytics tự tải về lần chạy đầu
+model: models/yolo26n.pt # đường dẫn tương đối gốc repo; cũng nhận tên file (vd yolo26s.pt) để Ultralytics tự tải về cache
 conf: 0.25               # ngưỡng tin cậy tối thiểu
 iou: 0.7                 # ngưỡng NMS
 imgsz: 960               # ảnh DETRAC là 960x540

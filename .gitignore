@@ -13,6 +13,8 @@ __pycache__/
 
 # Trọng số model (Ultralytics tự tải khi chạy)
 *.pt
+# ngoại lệ: trọng số trong models/ là tài sản repo, commit để chạy được ngay
+!models/*.pt
 runs/
 
 # Artifact của từng lần chạy trên máy local
