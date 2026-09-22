@@ -10,9 +10,9 @@ phần mô tả của task, để sau này biết nhãn sơ bộ do đâu mà c�
 Chuẩn bị: điền CVAT_USER / CVAT_PASSWORD vào .env, CVAT đang chạy ở localhost:8080.
 
 Dùng:
-    .venv/bin/python scripts/06_cvat_create_task.py
-    .venv/bin/python scripts/06_cvat_create_task.py --camera cam03 --task-name "night demo"
-    .venv/bin/python scripts/06_cvat_create_task.py --no-annotations   # tạo task trống
+    .venv/bin/python scripts/03_cvat_create_task.py
+    .venv/bin/python scripts/03_cvat_create_task.py --camera cam03 --task-name "night demo"
+    .venv/bin/python scripts/03_cvat_create_task.py --no-annotations   # tạo task trống
 """
 
 from __future__ import annotations
@@ -20,22 +20,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import REPO_ROOT, load_dotenv, load_yaml
+from _common import (REPO_ROOT, add_io_args, cvat_client, cvat_config, load_json,
+                     load_yaml, logger)
 
 
-def log(msg: str) -> None:
-    print(f"[cvat] {msg}", flush=True)
-
-
-def die(msg: str) -> None:
-    print(f"[cvat] LỖI: {msg}", file=sys.stderr, flush=True)
-    sys.exit(1)
+log, die = logger("cvat")
 
 
 def filter_coco_zip(src_zip: Path, keep_names: set[str], dst_zip: Path) -> tuple[int, int]:
@@ -59,27 +53,22 @@ def filter_coco_zip(src_zip: Path, keep_names: set[str], dst_zip: Path) -> tuple
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "pipeline.yaml")
-    ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
-    ap.add_argument("--project-name", default="UA-DETRAC vehicle detection")
+    add_io_args(ap, "config", "labels")
+    ap.add_argument("--project-name", default=None,
+                    help="mặc định lấy cvat.project_name trong pipeline.yaml")
     ap.add_argument("--task-name", default=None)
     ap.add_argument("--camera", default=None, help="chỉ lấy ảnh của một camera, vd cam03")
     ap.add_argument("--segment-size", type=int, default=50, help="số ảnh mỗi job")
     ap.add_argument("--no-annotations", action="store_true", help="tạo task trống, không nạp nhãn sơ bộ")
     args = ap.parse_args()
 
-    load_dotenv(REPO_ROOT / ".env")
-    host = os.environ.get("CVAT_HOST", "localhost")
-    # cvat-sdk mặc định dùng https khi host không có scheme; CVAT local chạy http thường.
-    if "://" not in host:
-        host = f"http://{host}"
-    port = int(os.environ.get("CVAT_PORT", 8080))
-    user = os.environ.get("CVAT_USER")
-    password = os.environ.get("CVAT_PASSWORD")
-    if not user or not password:
-        die("Thiếu CVAT_USER / CVAT_PASSWORD trong .env (tài khoản tạo bằng createsuperuser)")
+    try:
+        host, port, user, _ = cvat_config()
+    except RuntimeError as exc:
+        die(str(exc))
 
     cfg = load_yaml(args.config)
+    project_name = args.project_name or (cfg.get("cvat") or {}).get("project_name", "Vehicle detection")
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     img_dir = work / "images"
 
@@ -89,12 +78,12 @@ def main() -> None:
     if not images:
         die(f"Không có ảnh nào ở {img_dir}" + (f" cho camera {args.camera}" if args.camera else ""))
 
-    label_spec = json.loads(args.labels.read_text(encoding="utf-8"))
+    label_spec = load_json(args.labels)
 
     ann_zip = work / "prelabels_coco.zip"
     use_ann = not args.no_annotations
     if use_ann and not ann_zip.is_file():
-        die(f"Chưa có {ann_zip}. Chạy scripts/05_prelabels_to_cvat.py trước "
+        die(f"Chưa có {ann_zip}. Chạy scripts/02_prelabels_to_cvat.py trước "
             f"(hoặc dùng --no-annotations).")
     tmp_dir = None
     if use_ann:
@@ -108,7 +97,7 @@ def main() -> None:
         ann_zip = filtered
 
     try:
-        from cvat_sdk import make_client, models
+        from cvat_sdk import models
     except ImportError:
         die("Chưa cài cvat-sdk: pip install cvat-sdk")
 
@@ -125,18 +114,19 @@ def main() -> None:
         f",run_at={prov.get('run_at', 'n/a')}"
     )
 
-    task_name = args.task_name or f"detrac-{args.camera or 'all'}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    batch_label = (cfg.get("dataset") or {}).get("name", "batch")
+    task_name = args.task_name or f"{batch_label}-{args.camera or 'all'}-{datetime.now().strftime('%Y%m%d-%H%M')}"
 
     log(f"Kết nối {host}:{port} với tài khoản '{user}'...")
-    with make_client(host=host, port=port, credentials=(user, password)) as client:
+    with cvat_client() as client:
         client.organization_slug = os.environ.get("CVAT_ORG", "")
 
         # Project giữ label spec dùng chung cho mọi task.
-        project = next((p for p in client.projects.list() if p.name == args.project_name), None)
+        project = next((p for p in client.projects.list() if p.name == project_name), None)
         if project is None:
             project = client.projects.create(
                 models.ProjectWriteRequest(
-                    name=args.project_name,
+                    name=project_name,
                     labels=[models.PatchedLabelRequest(**lb) for lb in label_spec],
                 )
             )

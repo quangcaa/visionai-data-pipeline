@@ -4,7 +4,7 @@
 |---|---|
 | **Phiên bản** | 1.0 |
 | **Ngày ban hành** | 2026-09-16 |
-| **Áp dụng cho** | CVAT project `UA-DETRAC vehicle detection` |
+| **Áp dụng cho** | CVAT project khai trong `cvat.project_name` ([`configs/pipeline.yaml`](../configs/pipeline.yaml)) |
 | **Label spec** | [`configs/labels.json`](../configs/labels.json) |
 | **Khai báo phiên bản** | `labeling.guideline_version` trong [`configs/pipeline.yaml`](../configs/pipeline.yaml) |
 
@@ -14,11 +14,13 @@ Tài liệu này là đầu vào bắt buộc của **Bước 3 — Đánh giá 
 
 ## 1. Nhãn sơ bộ là gợi ý, không phải đáp án
 
-Mỗi job mở ra đã có sẵn box do model YOLO26 sinh. Các box này **chưa được ai xác nhận**. Đo trên lô prototype:
+Mỗi job mở ra đã có sẵn box do model YOLO26 sinh. Các box này **chưa được ai xác nhận**. Đo trên lô prototype UA-DETRAC (tháng 9/2026, 166 ảnh có đáp án gốc để đối chiếu):
 
 - Vị trí box khá tốt: AP50 của `car` 0.84, `bus` 0.91
-- **Phân loại sai nhiều**: 39 trên 46 xe van bị model gọi là `car`
-- Có box thừa, có xe bị bỏ sót
+- **Phân loại sai nhiều**: 39 trên 57 xe van bị model gọi là `car`
+- Có box thừa (precision 0.86), có xe bị bỏ sót (207 box)
+
+Đây là số đo một lần trên bộ có sẵn đáp án gốc. Dữ liệu mới không có đáp án để đo lại, nên **mặc định phải coi nhãn sơ bộ là chưa đáng tin** cho tới khi có người soát.
 
 Đánh giá viên phải **xem từng box trên từng ảnh**. Không được bấm Finish khi chưa soát hết.
 
@@ -53,7 +55,7 @@ Model nhầm ở đây nhiều nhất, và mắt người lướt nhanh cũng d�
 
 **Cách kiểm tra:** nhìn phần đuôi xe. Có bậc thụt xuống giữa khoang người và cốp → `car`. Mái kéo thẳng ra tận đuôi thành một khối hộp → `van`.
 
-Ví dụ: xe trắng ở góc dưới bên trái ảnh [`cam02_MVI_40131.jpg`](ignored_regions/cam02_MVI_40131.jpg) là `van`.
+Ví dụ: xe trắng ở góc dưới bên trái ảnh [`cam02.jpg`](ignore_regions/cam02.jpg) là `van`.
 
 ### 2.2 Không gán nhãn
 
@@ -110,14 +112,20 @@ Mỗi camera có những vùng **không gán nhãn**: đoạn đường quá xa,
 
 | Camera | Điều kiện | Số vùng | Ảnh minh hoạ |
 |---|---|---|---|
-| cam01 | sunny | 7 | [`cam01_MVI_20011.jpg`](ignored_regions/cam01_MVI_20011.jpg) |
-| cam02 | cloudy | 6 | [`cam02_MVI_40131.jpg`](ignored_regions/cam02_MVI_40131.jpg) |
-| cam03 | night | 6 | [`cam03_MVI_39761.jpg`](ignored_regions/cam03_MVI_39761.jpg) |
-| cam04 | rainy | 2 | [`cam04_MVI_63521.jpg`](ignored_regions/cam04_MVI_63521.jpg) |
+| cam01 | sunny | 7 | [`cam01.jpg`](ignore_regions/cam01.jpg) |
+| cam02 | cloudy | 6 | [`cam02.jpg`](ignore_regions/cam02.jpg) |
+| cam03 | night | 6 | [`cam03.jpg`](ignore_regions/cam03.jpg) |
+| cam04 | rainy | 2 | [`cam04.jpg`](ignore_regions/cam04.jpg) |
 
 Quy tắc: xe có **từ một nửa diện tích trở lên** nằm trong vùng đỏ thì **không gán nhãn**. Nhãn sơ bộ đã được lọc sẵn theo quy tắc này, nên đừng tự thêm box vào đó.
 
-Tạo lại ảnh minh hoạ: `python scripts/tools/draw_ignored_regions.py`
+Vùng bỏ qua khai báo tay trong [`configs/ignore_regions.json`](../configs/ignore_regions.json), toạ độ chuẩn hoá 0..1 theo camera. Camera mới phải khai vùng của nó vào đây, nếu không sẽ không có vùng nào bị loại.
+
+Ảnh minh hoạ sinh từ lô dữ liệu hiện tại — chạy lại sau mỗi lần sửa config hoặc nạp lô mới:
+
+```
+.venv/bin/python scripts/tools/draw_ignore_regions.py
+```
 
 ---
 
@@ -132,7 +140,7 @@ Người sửa và người duyệt nên là **hai người khác nhau**. Ngư�
 
 Cách đặt trong CVAT: trang task → dòng của job → đổi cột **Stage**; đổi **State** trong menu của job (Menu → Change job state).
 
-Script phát hành (`scripts/07_build_release.py`) **chỉ lấy job có đúng cặp `acceptance` + `completed`**. Job ở bất kỳ trạng thái nào khác đều bị bỏ qua.
+Script phát hành (`scripts/04_build_release.py`) **chỉ lấy job có đúng cặp `acceptance` + `completed`**. Job ở bất kỳ trạng thái nào khác đều bị bỏ qua.
 
 Lý do thường gặp để FAIL:
 

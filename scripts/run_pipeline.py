@@ -27,23 +27,20 @@ import re
 import subprocess
 import sys
 import time
-from pathlib import Path
 
-from _common import REPO_ROOT, load_dotenv, load_yaml
+from _common import REPO_ROOT, cvat_client, cvat_config, load_dotenv, load_yaml
+
 SCRIPTS = REPO_ROOT / "scripts"
 PY = sys.executable
 
-STEPS = ["download", "sample", "gt", "prelabel", "eval", "package", "cvat", "review", "release", "publish"]
+STEPS = ["ingest", "prelabel", "package", "cvat", "review", "release", "publish"]
 STEP_HELP = {
-    "download": "00 tải UA-DETRAC (bỏ qua nếu đã có)",
-    "sample":   "01 lấy mẫu frame + upload MinIO",
-    "gt":       "02 GT từ annotation DETRAC (thước đo)",
-    "prelabel": "03 gán nhãn sơ bộ YOLO26",
-    "eval":     "04 đánh giá nhãn sơ bộ",
-    "package":  "05 đóng gói nhãn sơ bộ cho CVAT",
-    "cvat":     "06 tạo task CVAT + nạp nhãn sơ bộ",
+    "ingest":   "00 nạp nguồn (video / thư mục ảnh) + lấy mẫu frame + upload MinIO",
+    "prelabel": "01 gán nhãn sơ bộ YOLO26",
+    "package":  "02 đóng gói nhãn sơ bộ cho CVAT",
+    "cvat":     "03 tạo task CVAT + nạp nhãn sơ bộ",
     "review":   "chờ người sửa + duyệt PASS trên CVAT",
-    "release":  "07 dựng dataset/ từ job đã PASS",
+    "release":  "04 dựng dataset/ từ job đã PASS",
     "publish":  "dvc add + git commit/tag + dvc push",
 }
 
@@ -77,17 +74,6 @@ def script(name: str, *args) -> None:
     run([PY, SCRIPTS / name, *args])
 
 
-def cvat_client():
-    from cvat_sdk import make_client
-    host = os.environ.get("CVAT_HOST", "localhost")
-    if "://" not in host:
-        host = f"http://{host}"
-    user, pwd = os.environ.get("CVAT_USER"), os.environ.get("CVAT_PASSWORD")
-    if not user or not pwd:
-        die("thiếu CVAT_USER / CVAT_PASSWORD trong .env")
-    return make_client(host=host, port=int(os.environ.get("CVAT_PORT", 8080)), credentials=(user, pwd))
-
-
 # --- kiểm tra trước khi chạy ------------------------------------------------
 
 def preflight(steps: list[str], version: str | None) -> None:
@@ -97,13 +83,13 @@ def preflight(steps: list[str], version: str | None) -> None:
         try:
             with cvat_client():
                 pass
-        except SystemExit:
-            raise
+        except RuntimeError as exc:
+            problems.append(str(exc))
         except Exception as exc:  # noqa: BLE001
             problems.append(f"không kết nối được CVAT ({exc.__class__.__name__}) — CVAT đã chạy chưa?")
-    if "sample" in steps:
+    if "ingest" in steps:
         import urllib.request
-        cfg = yaml.safe_load((REPO_ROOT / "configs/pipeline.yaml").read_text(encoding="utf-8"))
+        cfg = load_yaml(REPO_ROOT / "configs" / "pipeline.yaml")
         url = f"http://{cfg['storage']['endpoint']}/minio/health/live"
         try:
             urllib.request.urlopen(url, timeout=5)
@@ -129,7 +115,7 @@ def step_cvat(cfg: dict) -> int:
     args = ["--project-name", c["project_name"], "--segment-size", str(c["segment_size"])]
     if c.get("camera"):
         args += ["--camera", c["camera"]]
-    script("06_cvat_create_task.py", *args)
+    script("03_cvat_create_task.py", *args)
     new = sorted(set(reports.glob("cvat_task_*.json")) - before)
     if not new:
         die("không xác định được task vừa tạo (không thấy reports/cvat_task_<id>.json mới)")
@@ -139,9 +125,7 @@ def step_cvat(cfg: dict) -> int:
 
 
 def step_review(cfg: dict, task_id: int) -> None:
-    host = os.environ.get("CVAT_HOST", "localhost")
-    host = host if "://" in host else f"http://{host}"
-    port = os.environ.get("CVAT_PORT", 8080)
+    host, port, _, _ = cvat_config()
     poll = int(cfg["review"]["poll_seconds"])
     timeout = int(cfg["review"]["timeout_minutes"]) * 60
     log(f"Chờ duyệt task {task_id}: {host}:{port}/tasks/{task_id}\n"
@@ -177,7 +161,7 @@ def step_release(version: str, task_id: int | None) -> None:
         old = json.loads(manifest.read_text(encoding="utf-8")).get("version")
         log(f"dataset/ đang là bản {old}, sẽ được thay bằng {version} (bản cũ lấy lại qua git tag + dvc)")
         args.append("--force")
-    script("07_build_release.py", *args)
+    script("04_build_release.py", *args)
 
 
 def ensure_dvc(cfg: dict) -> None:
@@ -271,18 +255,12 @@ def main() -> None:
     t0 = time.time()
     for s in steps:
         log(f"=== {s}: {STEP_HELP[s]} ===")
-        if s == "download":
-            script("00_download_detrac.py")
-        elif s == "sample":
-            script("01_sample_frames.py", "--force", "--upload")
-        elif s == "gt":
-            script("02_xml_to_yolo_gt.py")
+        if s == "ingest":
+            script("00_ingest.py", "--force", "--upload")
         elif s == "prelabel":
-            script("03_prelabel_yolo26.py", "--force")
-        elif s == "eval":
-            script("04_eval_prelabel.py")
+            script("01_prelabel.py", "--force")
         elif s == "package":
-            script("05_prelabels_to_cvat.py")
+            script("02_prelabels_to_cvat.py")
         elif s == "cvat":
             task_id = step_cvat(cfg)
         elif s == "review":

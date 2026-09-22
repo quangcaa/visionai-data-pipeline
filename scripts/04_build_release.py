@@ -14,16 +14,15 @@ Xử lý   : 1. kéo nhãn đã xác nhận từ CVAT
 Ranh giới: KHÔNG chia train/val. MLOps chia theo camera_id/sequence_id trong metadata.jsonl.
 
 Dùng:
-    .venv/bin/python scripts/07_build_release.py --version 1.0.0
-    .venv/bin/python scripts/07_build_release.py --version 1.0.0 --task 4
-    .venv/bin/python scripts/07_build_release.py --version 1.1.0 --force   # thay bản đang có
+    .venv/bin/python scripts/04_build_release.py --version 1.0.0
+    .venv/bin/python scripts/04_build_release.py --version 1.0.0 --task 4
+    .venv/bin/python scripts/04_build_release.py --version 1.1.0 --force   # thay bản đang có
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -33,17 +32,11 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import REPO_ROOT, load_dotenv, load_yaml, sha256_of
-DATASET_NAME = "ua-detrac-vehicle-detection"
+from _common import (REPO_ROOT, add_io_args, cvat_client, load_label_spec, load_yaml,
+                     logger, read_manifest, sha256_of)
 
 
-def log(msg: str) -> None:
-    print(f"[release] {msg}", flush=True)
-
-
-def die(msg: str) -> None:
-    print(f"[release] LỖI: {msg}", file=sys.stderr, flush=True)
-    sys.exit(1)
+log, die = logger("release")
 
 
 def git_commit() -> str | None:
@@ -62,8 +55,7 @@ def main() -> None:
     ap.add_argument("--task", type=int, action="append", help="chỉ lấy job của task này (lặp được)")
     ap.add_argument("--out", type=Path, default=REPO_ROOT / "dataset")
     ap.add_argument("--force", action="store_true", help="thay thế dataset/ đang có")
-    ap.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "pipeline.yaml")
-    ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
+    add_io_args(ap, "config", "labels")
     args = ap.parse_args()
 
     if not re.fullmatch(r"\d+\.\d+\.\d+", args.version):
@@ -77,25 +69,14 @@ def main() -> None:
                 f"(bản cũ vẫn lấy lại được qua git tag + dvc checkout).")
         log(f"Sẽ thay bản {old_ver} bằng {args.version}")
 
-    load_dotenv(REPO_ROOT / ".env")
-    host = os.environ.get("CVAT_HOST", "localhost")
-    if "://" not in host:
-        host = f"http://{host}"
-    port = int(os.environ.get("CVAT_PORT", 8080))
-    user, password = os.environ.get("CVAT_USER"), os.environ.get("CVAT_PASSWORD")
-    if not user or not password:
-        die("Thiếu CVAT_USER / CVAT_PASSWORD trong .env")
-
     cfg = load_yaml(args.config)
-    classes = [i["name"] for i in json.loads(args.labels.read_text(encoding="utf-8"))]
+    dataset_cfg = cfg.get("dataset") or {}
+    dataset_name = dataset_cfg.get("name", "dataset")
+    classes = load_label_spec(args.labels)
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     img_dir = work / "images"
 
-    manifest = {}
-    for line in (work / "manifest.jsonl").read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            r = json.loads(line)
-            manifest[r["image_id"]] = r
+    manifest = {r["image_id"]: r for r in read_manifest(work)}
 
     prelabel_prov_path = work / "prelabels" / "_provenance.json"
     prelabel_prov = json.loads(prelabel_prov_path.read_text(encoding="utf-8")) if prelabel_prov_path.is_file() else {}
@@ -111,11 +92,14 @@ def main() -> None:
     if not guideline_path.is_file():
         errors.append("thiếu docs/labeling_guideline.md — không thể phát hành nhãn không rõ gán theo quy tắc nào")
 
-    from cvat_sdk import make_client
-
     images_out: list[dict] = []   # {src, name, label_lines, meta}
 
-    with make_client(host=host, port=port, credentials=(user, password)) as client:
+    try:
+        client_cm = cvat_client()
+    except RuntimeError as exc:
+        die(str(exc))
+
+    with client_cm as client:
         all_jobs = client.jobs.list()
         if args.task:
             all_jobs = [j for j in all_jobs if j.task_id in set(args.task)]
@@ -123,7 +107,6 @@ def main() -> None:
             die("Không tìm thấy job nào" + (f" trong task {args.task}" if args.task else ""))
 
         accepted = [j for j in all_jobs if str(j.stage) == "acceptance" and str(j.state) == "completed"]
-        skipped = [j for j in all_jobs if j not in accepted]
 
         log(f"{len(all_jobs)} job, {len(accepted)} đã được chấp nhận:")
         for j in sorted(all_jobs, key=lambda x: x.id):
@@ -258,7 +241,7 @@ def main() -> None:
                 weather_count[item["meta"]["weather"]] += 1
 
         data_yaml = (
-            f"# {DATASET_NAME} v{args.version}\n"
+            f"# {dataset_name} v{args.version}\n"
             "# KHÔNG chia train/val trong pipeline dữ liệu (ranh giới docx mục 7).\n"
             "# train và val cùng trỏ vào toàn bộ ảnh chỉ để file hợp lệ với Ultralytics.\n"
             "# MLOps phải tự chia theo camera_id / sequence_id trong metadata.jsonl,\n"
@@ -280,15 +263,14 @@ def main() -> None:
         jobs_used = sorted({(m["meta"]["cvat_task_id"], m["meta"]["cvat_job_id"], m["meta"]["accepted_at"])
                             for m in images_out})
         manifest_out = {
-            "dataset": DATASET_NAME,
+            "dataset": dataset_name,
             "version": args.version,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "code_commit": commit,
             "split": "none (MLOps chia theo camera_id/sequence_id)",
             "source": {
-                "dataset": "UA-DETRAC",
-                "distribution": "Kaggle bratjay/ua-detrac-orig",
-                "cameras": cfg["cameras"],
+                "note": dataset_cfg.get("source_note"),
+                "sources": cfg.get("sources", []),
                 "sampling": cfg["sampling"],
             },
             "labeling": {
@@ -327,16 +309,16 @@ def main() -> None:
         raise
 
     s = manifest_out["stats"]
-    log(f"Đã phát hành {DATASET_NAME} v{args.version} -> {args.out.relative_to(REPO_ROOT)}/")
+    log(f"Đã phát hành {dataset_name} v{args.version} -> {args.out.relative_to(REPO_ROOT)}/")
     log(f"  {s['num_images']} ảnh, {s['num_boxes']} box, {s['empty_images']} ảnh không có xe")
     log(f"  lớp: {s['class_distribution']}")
     log(f"  camera: {s['images_per_camera']}")
     print()
     log("Tiếp theo — đóng phiên bản bằng DVC:")
-    print(f"    dvc add dataset")
+    print("    dvc add dataset")
     print(f"    git add dataset.dvc .gitignore && git commit -m \"dataset v{args.version}\"")
     print(f"    git tag dataset-v{args.version}")
-    print(f"    dvc push")
+    print("    dvc push")
 
 
 if __name__ == "__main__":

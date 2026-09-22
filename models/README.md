@@ -1,6 +1,6 @@
 # Thư mục trọng số model
 
-Trọng số YOLO dùng cho bước gán nhãn sơ bộ (`scripts/03_prelabel_yolo26.py`).
+Trọng số YOLO dùng cho bước gán nhãn sơ bộ (`scripts/01_prelabel.py`).
 Khai báo trong [`configs/prelabel.yaml`](../configs/prelabel.yaml) qua khoá `model`.
 
 - `yolo26n.pt` — YOLO26 nano (đã có sẵn, ~5.3 MB).

@@ -13,8 +13,8 @@ Ràng buộc từ docx:
 Cột conf là phần mở rộng so với YOLO chuẩn, dùng khi đánh giá và lọc; bỏ cột cuối là ra YOLO chuẩn.
 
 Dùng:
-    .venv/bin/python scripts/03_prelabel_yolo26.py
-    .venv/bin/python scripts/03_prelabel_yolo26.py --force
+    .venv/bin/python scripts/01_prelabel.py
+    .venv/bin/python scripts/01_prelabel.py --force
 """
 
 from __future__ import annotations
@@ -22,29 +22,19 @@ from __future__ import annotations
 import argparse
 import json
 import platform
-import sys
 import time
 from collections import Counter
 from datetime import datetime, timezone
-from pathlib import Path
 
-from _common import REPO_ROOT, load_label_spec, load_yaml
-
-
-def log(msg: str) -> None:
-    print(f"[prelabel] {msg}", flush=True)
+from _common import REPO_ROOT, add_io_args, load_label_spec, load_yaml, logger
 
 
-def die(msg: str) -> None:
-    print(f"[prelabel] LỖI: {msg}", file=sys.stderr, flush=True)
-    sys.exit(1)
+log, die = logger("prelabel")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "pipeline.yaml")
-    ap.add_argument("--prelabel-config", type=Path, default=REPO_ROOT / "configs" / "prelabel.yaml")
-    ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
+    add_io_args(ap, "config", "prelabel-config", "labels")
     ap.add_argument("--force", action="store_true", help="ghi đè nhãn sơ bộ đã có")
     args = ap.parse_args()
 
@@ -56,7 +46,7 @@ def main() -> None:
     out_dir = work_dir / "prelabels"
 
     if not img_dir.is_dir() or not any(img_dir.glob("*.jpg")):
-        die(f"Chưa có ảnh ở {img_dir}. Chạy scripts/01_sample_frames.py trước.")
+        die(f"Chưa có ảnh ở {img_dir}. Chạy scripts/00_ingest.py trước.")
     if out_dir.exists() and any(out_dir.glob("*.txt")) and not args.force:
         die(f"Đã có nhãn sơ bộ ở {out_dir}. Dùng --force để chạy lại.")
     out_dir.mkdir(parents=True, exist_ok=True)

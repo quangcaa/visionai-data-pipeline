@@ -2,9 +2,9 @@
 """Tải bộ dữ liệu UA-DETRAC từ Kaggle về data/raw/ua-detrac.
 
 Dùng (trong venv của repo):
-    .venv/bin/python scripts/00_download_detrac.py
-    .venv/bin/python scripts/00_download_detrac.py --force
-    .venv/bin/python scripts/00_download_detrac.py --slug dtrnngc/ua-detrac-dataset
+    .venv/bin/python scripts/tools/download_detrac.py
+    .venv/bin/python scripts/tools/download_detrac.py --force
+    .venv/bin/python scripts/tools/download_detrac.py --slug dtrnngc/ua-detrac-dataset
 
 Credential (kaggle >= 2.2): một trong các cách sau
     .venv/bin/kaggle auth login          # OAuth, khuyến nghị
@@ -21,20 +21,16 @@ import sys
 import zipfile
 from pathlib import Path
 
-from _common import REPO_ROOT, load_dotenv
+# script nằm trong scripts/tools/ nên phải tự thêm scripts/ vào đường dẫn import
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _common import REPO_ROOT, load_dotenv, logger  # noqa: E402
 
 DEFAULT_SLUG = "bratjay/ua-detrac-orig"
 DEST_DIR = REPO_ROOT / "data" / "raw" / "ua-detrac"
 ZIP_DIR = REPO_ROOT / "data" / "downloads"
 
 
-def log(msg: str) -> None:
-    print(f"[detrac] {msg}", flush=True)
-
-
-def die(msg: str) -> None:
-    print(f"[detrac] LỖI: {msg}", file=sys.stderr, flush=True)
-    sys.exit(1)
+log, die = logger("detrac")
 
 
 def has_credentials() -> bool:
@@ -90,7 +86,7 @@ def main() -> None:
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
-    log(f"Đã nạp biến môi trường từ .env")
+    log("Đã nạp biến môi trường từ .env")
 
     if args.dest.is_dir() and any(args.dest.iterdir()) and not args.force:
         log(f"Đã có dữ liệu tại {args.dest} — bỏ qua (dùng --force để tải lại).")

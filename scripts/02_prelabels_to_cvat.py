@@ -5,67 +5,59 @@ CVAT không đọc trực tiếp .txt của YOLO kèm cột conf, nên bước n
     prelabels_coco.zip
       └── annotations/instances_default.json
 
-Dự đoán rơi vào ignored_region của DETRAC bị loại (giống lúc chấm điểm ở
-04_eval_prelabel.py) để đánh giá viên không phải xoá tay hàng trăm box ở
-những vùng vốn không cần gán nhãn.
+Dự đoán rơi vào vùng bỏ qua (configs/ignore_regions.json) bị loại, để đánh giá viên
+không phải xoá tay hàng trăm box ở những vùng vốn không cần gán nhãn.
 
 Dùng:
-    .venv/bin/python scripts/05_prelabels_to_cvat.py
-    .venv/bin/python scripts/05_prelabels_to_cvat.py --min-conf 0.4
-    .venv/bin/python scripts/05_prelabels_to_cvat.py --no-drop-ignored
+    .venv/bin/python scripts/02_prelabels_to_cvat.py
+    .venv/bin/python scripts/02_prelabels_to_cvat.py --min-conf 0.4
+    .venv/bin/python scripts/02_prelabels_to_cvat.py --no-drop-ignored
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 
-from _common import (REPO_ROOT, boxes_in_ignored, load_label_spec,
-                     load_yaml, yolo_to_xyxy)
+from _common import (REPO_ROOT, add_io_args, boxes_in_ignored, ignore_regions_xyxy,
+                     load_ignore_regions, load_label_spec, load_yaml, load_yolo,
+                     logger, read_manifest, yolo_to_xyxy)
 
 
-def log(msg: str) -> None:
-    print(f"[to-cvat] {msg}", flush=True)
-
-
-def die(msg: str) -> None:
-    print(f"[to-cvat] LỖI: {msg}", file=sys.stderr, flush=True)
-    sys.exit(1)
+log, die = logger("to-cvat")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "pipeline.yaml")
-    ap.add_argument("--eval-config", type=Path, default=REPO_ROOT / "configs" / "eval.yaml")
-    ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
+    add_io_args(ap, "config", "prelabel-config", "labels")
     ap.add_argument("--min-conf", type=float, default=None,
-                    help="ngưỡng conf tối thiểu (mặc định lấy conf_report trong eval.yaml)")
+                    help="ngưỡng conf tối thiểu (mặc định lấy export.min_conf trong prelabel.yaml)")
     ap.add_argument("--no-drop-ignored", action="store_true",
-                    help="giữ cả dự đoán trong ignored_region")
+                    help="giữ cả dự đoán nằm trong vùng bỏ qua")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
 
     cfg = load_yaml(args.config)
-    ecfg = load_yaml(args.eval_config)
+    pcfg = load_yaml(args.prelabel_config)
     classes = load_label_spec(args.labels)
 
     work = REPO_ROOT / cfg["paths"]["work_dir"]
     pred_dir = work / "prelabels"
     if not pred_dir.is_dir():
-        die(f"Chưa có nhãn sơ bộ ở {pred_dir}. Chạy scripts/03_prelabel_yolo26.py trước.")
+        die(f"Chưa có nhãn sơ bộ ở {pred_dir}. Chạy scripts/01_prelabel.py trước.")
 
-    min_conf = args.min_conf if args.min_conf is not None else float(ecfg["conf_report"])
-    drop_ignored = not args.no_drop_ignored
-    ig_thr = float(ecfg["ignore_regions"]["overlap_threshold"])
+    export = pcfg.get("export") or {}
+    min_conf = args.min_conf if args.min_conf is not None else float(export.get("min_conf", 0.25))
+    drop_ignored = bool(export.get("drop_in_ignore", True)) and not args.no_drop_ignored
+    ig_thr = float((cfg.get("ignore_regions") or {}).get("overlap_threshold", 0.5))
 
-    records = [json.loads(l) for l in (work / "manifest.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
-    scenes = json.loads((work / "scenes.json").read_text(encoding="utf-8"))
+    records = read_manifest(work)
+    ignore = load_ignore_regions(cfg)
 
     # CVAT khớp ảnh theo file_name, nên giữ đúng tên file trong task.
     coco = {
@@ -90,10 +82,9 @@ def main() -> None:
              "coco_url": "", "date_captured": 0}
         )
 
-        p_file = pred_dir / f"{stem}.txt"
-        if not p_file.is_file() or p_file.stat().st_size == 0:
+        p = load_yolo(pred_dir / f"{stem}.txt", 6)
+        if not len(p):
             continue
-        p = np.loadtxt(p_file, ndmin=2)
 
         cls = p[:, 0].astype(int)
         conf = p[:, 5]
@@ -103,9 +94,7 @@ def main() -> None:
         n_dropped_conf += int((~keep).sum())
 
         if drop_ignored:
-            regs = scenes[r["sequence_id"]]["ignored_regions"]
-            reg_box = np.array([[x["left"], x["top"], x["left"] + x["width"], x["top"] + x["height"]]
-                                for x in regs]) if regs else np.zeros((0, 4))
+            reg_box = ignore_regions_xyxy(ignore.get(r["camera_id"]), w, h)
             in_ig = boxes_in_ignored(xyxy, reg_box, ig_thr)
             n_dropped_ignored += int((keep & in_ig).sum())
             keep &= ~in_ig
@@ -137,8 +126,8 @@ def main() -> None:
 
     log(f"{len(coco['images'])} ảnh, {len(coco['annotations'])} box sơ bộ -> {out_zip}")
     log(f"Đã loại: {n_dropped_conf} box dưới conf {min_conf}"
-        + (f", {n_dropped_ignored} box trong ignored_region" if drop_ignored else ""))
-    log("Nạp vào CVAT bằng scripts/06_cvat_create_task.py, hoặc trong UI: Task > Upload annotations > COCO 1.0")
+        + (f", {n_dropped_ignored} box trong vùng bỏ qua" if drop_ignored else ""))
+    log("Nạp vào CVAT bằng scripts/03_cvat_create_task.py, hoặc trong UI: Task > Upload annotations > COCO 1.0")
 
 
 if __name__ == "__main__":

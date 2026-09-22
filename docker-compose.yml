@@ -1,5 +1,5 @@
 # Hạ tầng lưu trữ cho pipeline dữ liệu.
-# CVAT chạy bằng compose riêng ở third_party/cvat (xem docs/INSTALL_GUIDE.md).
+# CVAT chạy bằng compose riêng ở third_party/cvat (xem README.md, mục Cài đặt).
 #
 #   docker compose up -d        # khởi động
 #   docker compose ps           # kiểm tra

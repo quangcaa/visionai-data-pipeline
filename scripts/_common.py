@@ -5,6 +5,7 @@ Các script tự `from _common import ...` để dùng. KHÔNG thêm CLI / argpa
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -35,6 +36,8 @@ def load_dotenv(path: Path | None = None) -> None:
             os.environ[key] = value
 
 
+# --- in ra màn hình ----------------------------------------------------------
+
 def log(tag: str, msg: str) -> None:
     """In ra stdout, flush ngay (CI / log file cần thấy ngay)."""
     print(f"[{tag}] {msg}", flush=True)
@@ -45,6 +48,16 @@ def die(tag: str, msg: str) -> None:
     print(f"[{tag}] LỖI: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
 
+
+def logger(tag: str):
+    """Trả về cặp (log, die) đã gắn sẵn tag của script.
+
+    Dùng ở đầu mỗi script:  log, die = logger("sample")
+    """
+    return functools.partial(log, tag), functools.partial(die, tag)
+
+
+# --- đọc file ----------------------------------------------------------------
 
 def sha256_of(path: Path) -> str:
     """SHA-256 của file, đọc theo chunk 1 MiB."""
@@ -68,6 +81,36 @@ def load_label_spec(path: Path) -> list[str]:
     return [item["name"] for item in load_json(path)]
 
 
+def read_manifest(work_dir: Path) -> list[dict]:
+    """Đọc manifest.jsonl của lô hiện tại -> danh sách record theo thứ tự ghi."""
+    path = work_dir / "manifest.jsonl"
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def load_ignore_regions(cfg: dict) -> dict[str, np.ndarray]:
+    """Đọc file vùng bỏ qua khai báo tay -> {camera_id: mảng (N,4) toạ độ chuẩn hoá 0..1}.
+
+    Đường dẫn file lấy từ `ignore_regions.file` trong pipeline.yaml. Camera không có
+    mục trong file = không có vùng bỏ qua nào. File thiếu cũng không sao — coi như rỗng.
+    """
+    spec = cfg.get("ignore_regions") or {}
+    path = REPO_ROOT / spec.get("file", "configs/ignore_regions.json")
+    if not path.is_file():
+        return {}
+    out: dict[str, np.ndarray] = {}
+    for camera_id, entry in (load_json(path).get("cameras") or {}).items():
+        regions = (entry or {}).get("regions") or []
+        if not regions:
+            continue
+        out[camera_id] = np.clip(
+            np.array([[r["x1"], r["y1"], r["x2"], r["y2"]] for r in regions], dtype=float), 0.0, 1.0)
+    return out
+
+
+# --- hộp giới hạn ------------------------------------------------------------
+
 def load_yolo(path: Path, n_cols: int) -> np.ndarray:
     """Đọc file .txt định dạng YOLO. Trả về mảng (N, n_cols) hoặc zeros nếu rỗng."""
     if not path.is_file() or path.stat().st_size == 0:
@@ -83,6 +126,13 @@ def yolo_to_xyxy(arr: np.ndarray, w: int, h: int) -> np.ndarray:
     return np.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], axis=1)
 
 
+def ignore_regions_xyxy(regions_norm: np.ndarray | None, w: int, h: int) -> np.ndarray:
+    """Vùng bỏ qua chuẩn hoá 0..1 -> toạ độ pixel x1,y1,x2,y2 của ảnh w x h."""
+    if regions_norm is None or len(regions_norm) == 0:
+        return np.zeros((0, 4))
+    return regions_norm * np.array([w, h, w, h], dtype=float)
+
+
 def boxes_in_ignored(pred_xyxy: np.ndarray, regions_xyxy: np.ndarray, thr: float) -> np.ndarray:
     """True nếu >= thr diện tích box dự đoán nằm trong một vùng bỏ qua."""
     if pred_xyxy.size == 0 or regions_xyxy.size == 0:
@@ -96,20 +146,52 @@ def boxes_in_ignored(pred_xyxy: np.ndarray, regions_xyxy: np.ndarray, thr: float
     return (inter / area[:, None]).max(axis=1) >= thr
 
 
-def add_io_args(ap) -> None:
-    """Thêm 4 flag chuẩn: --config, --labels, --prelabel-config, --eval-config."""
-    ap.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "pipeline.yaml")
-    ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
-    ap.add_argument("--prelabel-config", type=Path, default=REPO_ROOT / "configs" / "prelabel.yaml")
-    ap.add_argument("--eval-config", type=Path, default=REPO_ROOT / "configs" / "eval.yaml")
+# --- CVAT --------------------------------------------------------------------
+
+def cvat_config() -> tuple[str, int, str, str]:
+    """Đọc CVAT_* từ .env / môi trường -> (host, port, user, password).
+
+    cvat-sdk mặc định dùng https khi host không có scheme; CVAT local chạy http thường.
+    Ném RuntimeError nếu thiếu tài khoản — nơi gọi tự quyết định báo lỗi thế nào.
+    """
+    load_dotenv()
+    host = os.environ.get("CVAT_HOST", "localhost")
+    if "://" not in host:
+        host = f"http://{host}"
+    port = int(os.environ.get("CVAT_PORT", 8080))
+    user, password = os.environ.get("CVAT_USER"), os.environ.get("CVAT_PASSWORD")
+    if not user or not password:
+        raise RuntimeError("thiếu CVAT_USER / CVAT_PASSWORD trong .env "
+                           "(tài khoản tạo bằng createsuperuser)")
+    return host, port, user, password
 
 
-def add_io_args(ap) -> None:
-    """Thêm 4 flag chuẩn: --config, --labels, --prelabel-config, --eval-config."""
-    ap.add_argument("--config", type=Path, default=REPO_ROOT / "configs" / "pipeline.yaml")
-    ap.add_argument("--labels", type=Path, default=REPO_ROOT / "configs" / "labels.json")
-    ap.add_argument("--prelabel-config", type=Path, default=REPO_ROOT / "configs" / "prelabel.yaml")
-    ap.add_argument("--eval-config", type=Path, default=REPO_ROOT / "configs" / "eval.yaml")
+def cvat_client():
+    """Context manager client CVAT đã đăng nhập. Dùng: `with cvat_client() as c:`"""
+    from cvat_sdk import make_client
+
+    host, port, user, password = cvat_config()
+    return make_client(host=host, port=port, credentials=(user, password))
+
+
+# --- CLI ---------------------------------------------------------------------
+
+_IO_ARGS = {
+    "config": ("--config", "configs/pipeline.yaml"),
+    "labels": ("--labels", "configs/labels.json"),
+    "prelabel-config": ("--prelabel-config", "configs/prelabel.yaml"),
+    "ignore-regions": ("--ignore-regions", "configs/ignore_regions.json"),
+}
+
+
+def add_io_args(ap, *names: str) -> None:
+    """Thêm các flag trỏ tới file cấu hình, mỗi script chỉ khai báo cái mình dùng.
+
+        add_io_args(ap, "config", "labels")
+    """
+    for name in names:
+        flag, default = _IO_ARGS[name]
+        ap.add_argument(flag, type=Path, default=REPO_ROOT / default)
 
 
 if __name__ == "__main__":

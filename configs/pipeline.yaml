@@ -1,22 +1,48 @@
-# Cấu hình pipeline dữ liệu — KHÔNG hard-code tham số trong script (nguyên tắc 6, docx).
+# Cấu hình pipeline dữ liệu — KHÔNG hard-code tham số trong script.
 
 paths:
-  detrac_images: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images
-  detrac_annotations: data/raw/ua-detrac/DETRAC-Train-Annotations-XML/DETRAC-Train-Annotations-XML
-  work_dir: data/prototype
+  inbox: data/inbox        # nơi thả dữ liệu mới (video hoặc thư mục ảnh)
+  work_dir: data/prototype # thư mục làm việc của lô hiện tại
 
-# Tập con dùng cho prototype: mỗi sequence = 1 camera, phủ đủ 4 điều kiện thời tiết.
-cameras:
-  - {camera_id: cam01, sequence: MVI_20011}   # sunny
-  - {camera_id: cam02, sequence: MVI_40131}   # cloudy
-  - {camera_id: cam03, sequence: MVI_39761}   # night
-  - {camera_id: cam04, sequence: MVI_63521}   # rainy
+# Nguồn dữ liệu. Mỗi mục là MỘT camera.
+#   kind: video   -> path trỏ tới file video, frame được tách bằng OpenCV
+#   kind: images  -> path trỏ tới thư mục ảnh đã tách sẵn
+# sequence_id mặc định lấy theo tên file/thư mục, ghi đè được bằng khoá `sequence`.
+# `scene` là metadata tự khai, tuỳ chọn — đi thẳng vào metadata.jsonl của bản phát hành.
+sources:
+  - camera_id: cam01
+    kind: images
+    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_20011
+    scene: {weather: sunny, camera_state: unstable}
+  - camera_id: cam02
+    kind: images
+    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_40131
+    scene: {weather: cloudy, camera_state: unstable}
+  - camera_id: cam03
+    kind: images
+    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_39761
+    scene: {weather: night, camera_state: stable}
+  - camera_id: cam04
+    kind: images
+    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_63521
+    scene: {weather: rainy, camera_state: stable}
+
+  # Ví dụ nguồn video — bỏ comment và sửa đường dẫn khi có dữ liệu mới:
+  # - camera_id: cam05
+  #   kind: video
+  #   path: data/inbox/nga-tu-le-duan.mp4
+  #   scene: {weather: sunny, location: "Lê Duẩn"}
 
 sampling:
-  source_fps: 25          # UA-DETRAC quay ở 25 fps
-  sample_every_n: 25      # lấy 1 frame mỗi 25 frame ~ 1 ảnh/giây
-  max_per_camera: 50      # giới hạn cho prototype chạy CPU
-  start_frame: 1          # DETRAC đánh số frame từ 1 (img00001.jpg)
+  source_fps: 25          # fps giả định cho nguồn `images`; nguồn `video` đọc fps thật từ file
+  sample_every_n: 25      # lấy 1 frame mỗi N frame
+  max_per_camera: 50      # giới hạn mỗi camera (0 = không giới hạn)
+  image_glob: "*.jpg"     # mẫu tên file cho nguồn `images`
+
+# Vùng ảnh không gán nhãn. Dữ liệu nằm ở file riêng vì sẽ do công cụ web sinh ra.
+ignore_regions:
+  file: configs/ignore_regions.json
+  overlap_threshold: 0.5  # phần diện tích box nằm trong vùng bỏ qua thì coi là thuộc vùng đó
 
 storage:
   bucket_raw_frames: raw-frames
@@ -26,3 +52,23 @@ storage:
 labeling:
   # Phiên bản guideline đang áp dụng (docs/labeling_guideline.md). Ghi vào từng ảnh khi phát hành.
   guideline_version: "1.0"
+
+dataset:
+  name: vehicle-detection   # tên bản phát hành, dùng trong MANIFEST.json và data.yaml
+  source_note: "UA-DETRAC (Kaggle bratjay/ua-detrac-orig) + dữ liệu camera nội bộ"
+
+# --- các bước do scripts/run_pipeline.py điều phối ---------------------------
+
+cvat:
+  project_name: "Vehicle detection"
+  segment_size: 50        # số ảnh mỗi job
+  camera: null            # null = mọi camera; đặt vd "cam03" để chỉ tạo task cho một camera
+
+review:
+  poll_seconds: 30        # nhịp hỏi lại CVAT xem job đã PASS chưa
+  timeout_minutes: 0      # 0 = chờ vô hạn (bước này là người làm, không nên tự bỏ cuộc)
+
+dvc:
+  remote_name: minio
+  remote_url: s3://dvc-store/vision-ai   # bucket tự tạo nếu chưa có
+  endpoint_url: http://localhost:9000    # khớp với storage.endpoint ở trên

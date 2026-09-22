@@ -16,3 +16,8 @@ class_map:
   7: van          # COCO truck  -> van
   3: others       # COCO motorcycle
   1: others       # COCO bicycle
+
+# Lọc khi đóng gói nhãn sơ bộ cho CVAT (scripts/02_prelabels_to_cvat.py).
+export:
+  min_conf: 0.25         # bỏ box có conf thấp hơn ngưỡng này
+  drop_in_ignore: true   # bỏ box nằm trong vùng bỏ qua (configs/ignore_regions.json)

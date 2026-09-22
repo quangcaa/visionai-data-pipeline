@@ -1,24 +1,26 @@
 # Pipeline dữ liệu Vision AI — chỉ gồm thư viện scripts/ thực sự import.
 
-# 00 tải dữ liệu
-kaggle
-
-# 01 lấy mẫu + upload MinIO
+# 00 nạp nguồn: thư mục ảnh + upload MinIO
 minio
 pillow
 
-# 03 gán nhãn sơ bộ YOLO26
+# 00 nạp nguồn: tách frame từ video
+opencv-python
+
+# 01 gán nhãn sơ bộ YOLO26
 ultralytics
 
-# 04, 05 đánh giá và đóng gói nhãn
+# 02 đóng gói nhãn sơ bộ
 numpy
 
-# 06, 07 CVAT
+# 03, 04 CVAT
 cvat-sdk
-cvat-cli
 
-# 07 phát hành + quản lý phiên bản
+# 04 phát hành + quản lý phiên bản
 dvc[s3]
+
+# tools/download_detrac.py (tuỳ chọn, chỉ để tải UA-DETRAC)
+kaggle
 
 # chung
 pyyaml
