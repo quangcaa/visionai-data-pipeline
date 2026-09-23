@@ -55,7 +55,7 @@ Model nhầm ở đây nhiều nhất, và mắt người lướt nhanh cũng d�
 
 **Cách kiểm tra:** nhìn phần đuôi xe. Có bậc thụt xuống giữa khoang người và cốp → `car`. Mái kéo thẳng ra tận đuôi thành một khối hộp → `van`.
 
-Ví dụ: xe trắng ở góc dưới bên trái ảnh [`cam02.jpg`](ignore_regions/cam02.jpg) là `van`.
+Khi phân vân, đối chiếu với ảnh minh hoạ của chính camera đó trong [`docs/ignore_regions/`](ignore_regions/).
 
 ### 2.2 Không gán nhãn
 
@@ -110,12 +110,9 @@ Nếu chỉ còn là một chấm mờ không phân biệt được là xe gì, 
 
 Mỗi camera có những vùng **không gán nhãn**: đoạn đường quá xa, xe mờ chồng lên nhau, bãi đỗ xe ven đường. CVAT **không hiển thị** các vùng này, nên phải xem ảnh minh hoạ trước khi làm job của camera đó:
 
-| Camera | Điều kiện | Số vùng | Ảnh minh hoạ |
-|---|---|---|---|
-| cam01 | sunny | 7 | [`cam01.jpg`](ignore_regions/cam01.jpg) |
-| cam02 | cloudy | 6 | [`cam02.jpg`](ignore_regions/cam02.jpg) |
-| cam03 | night | 6 | [`cam03.jpg`](ignore_regions/cam03.jpg) |
-| cam04 | rainy | 2 | [`cam04.jpg`](ignore_regions/cam04.jpg) |
+Ảnh minh hoạ nằm ở [`docs/ignore_regions/`](ignore_regions/), mỗi camera một file
+`<camera_id>.jpg` — vùng đỏ là chỗ **không gán nhãn**. Xem ảnh của camera mình sắp làm
+trước khi mở job.
 
 Quy tắc: xe có **từ một nửa diện tích trở lên** nằm trong vùng đỏ thì **không gán nhãn**. Nhãn sơ bộ đã được lọc sẵn theo quy tắc này, nên đừng tự thêm box vào đó.
 
