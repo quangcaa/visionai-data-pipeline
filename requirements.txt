@@ -22,5 +22,11 @@ dvc[s3]
 # tools/download_detrac.py (tuỳ chọn, chỉ để tải UA-DETRAC)
 kaggle
 
+# web điều khiển pipeline (web/app.py)
+fastapi
+uvicorn[standard]
+python-multipart
+ruamel.yaml          # sửa pipeline.yaml mà giữ nguyên comment
+
 # chung
 pyyaml

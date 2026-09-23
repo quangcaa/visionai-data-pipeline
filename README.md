@@ -10,6 +10,10 @@ Bản mặc định trỏ vào UA-DETRAC để chạy thử được ngay.
 
 Bốn lớp: `car`, `bus`, `van`, `others` (xem [`configs/labels.json`](configs/labels.json)).
 
+> **Lần đầu dùng?** Đi theo [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — một mạch từ
+> `git clone` tới dataset đã đóng phiên bản, mỗi bước một lệnh. README này là tài liệu
+> tra cứu theo chủ đề.
+
 ## Nguyên tắc
 
 1. **Nhãn do model sinh không bao giờ đi thẳng vào dataset.** Chúng nằm ở `data/prototype/prelabels/`, chờ người sửa.
@@ -23,7 +27,7 @@ Bốn lớp: `car`, `bus`, `van`, `others` (xem [`configs/labels.json`](configs/
 
 | # | Bước | Script | Ra |
 |---|---|---|---|
-| 0 | ingest | [`00_ingest.py`](scripts/00_ingest.py) | `images/` + `manifest.jsonl` (+ MinIO) |
+| 0 | ingest | [`00_ingest.py`](scripts/00_ingest.py) | lấy mẫu frame → `images/` + `manifest.jsonl` (+ MinIO) |
 | 1 | prelabel | [`01_prelabel.py`](scripts/01_prelabel.py) | `prelabels/*.txt` + `_provenance.json` |
 | 2 | package | [`02_prelabels_to_cvat.py`](scripts/02_prelabels_to_cvat.py) | `prelabels_coco.zip` (COCO 1.0) |
 | 3 | cvat | [`03_cvat_create_task.py`](scripts/03_cvat_create_task.py) | task CVAT đã nạp nhãn sơ bộ |
@@ -80,6 +84,12 @@ nên đổi độ phân giải camera không phải tính lại:
 Camera không có mục ở đây = không có vùng bỏ qua nào. Ngưỡng diện tích chồng lấn đặt ở
 `ignore_regions.overlap_threshold` trong `pipeline.yaml` (mặc định 0.5).
 
+**Vùng khoá theo `camera_id`, mà `camera_id` thì dùng lại được.** Xoá một camera rồi gán
+lại id đó cho dữ liệu khác thì vùng cũ sẽ áp lên dữ liệu mới. Vì vậy mỗi mục ghi kèm
+`source` — đường dẫn nguồn lúc vẽ. Khi nó lệch với nguồn hiện tại, web hiện cảnh báo ngay
+trên ảnh và `02_prelabels_to_cvat.py` in CẢNH BÁO. Xoá nguồn trong web thì vùng của nó bị
+xoá theo, để không còn mục mồ côi.
+
 Kiểm tra bằng mắt sau khi sửa:
 
 ```bash
@@ -123,6 +133,55 @@ Giao diện: MinIO console http://localhost:9001, CVAT http://localhost:8080.
 Để CVAT đọc được ảnh từ MinIO, bỏ comment khối `cvat` trong `networks:` của
 [`docker-compose.yml`](docker-compose.yml) sau khi CVAT đã chạy.
 
+## Web điều khiển
+
+Làm trọn pipeline trong trình duyệt, không cần gõ lệnh:
+
+```bash
+.venv/bin/python -m web.app
+```
+
+Mở http://127.0.0.1:8000. Năm khu, đúng theo thứ tự làm việc:
+
+| Khu | Làm gì |
+|---|---|
+| **1 Nguồn** | Kéo-thả video vào `data/inbox/`, chọn file có sẵn, khai `camera_id` + metadata. Ghi thẳng vào `configs/pipeline.yaml` và **giữ nguyên comment** |
+| **2 Lớp nhãn** | Sửa danh sách lớp và ánh xạ từ lớp của model sang lớp của bạn. Danh sách lớp đọc thẳng từ file trọng số nên không phải đoán |
+| **3 Vùng bỏ qua** | Lấy khung hình từ chính video (kéo thanh trượt để chọn vị trí), khoanh vùng bằng chuột, lưu ra `configs/ignore_regions.json` |
+| **4 Chạy** | Sửa tham số lấy mẫu tại chỗ, rồi bấm lấy mẫu → gán nhãn sơ bộ → đóng gói → tạo task CVAT (hoặc “Chạy cả 4 bước”). Log hiện trực tiếp |
+| **5 CVAT** | Xem task và từng job, trạng thái PASS, mở thẳng sang CVAT, đặt PASS/FAIL, xoá hẳn task |
+| **6 Phát hành** | Dựng `dataset/` từ job đã PASS, rồi đóng phiên bản bằng DVC + git tag |
+
+Tham số lấy mẫu (`sample_every_n`, `max_per_camera`, `source_fps`, `image_glob`) sửa được
+ngay trong khu **Chạy** — web ghi thẳng vào mục `sampling` của `configs/pipeline.yaml`,
+giữ nguyên comment. Không còn chỗ nào phải mở file ra sửa tay.
+
+Vẽ vùng: kéo chuột để tạo, bấm vào vùng để chọn, <kbd>Delete</kbd> để xoá, có Hoàn tác.
+Toạ độ lưu ở dạng chuẩn hoá 0..1 nên đổi độ phân giải camera không phải vẽ lại.
+
+Đổi lớp nhãn khi CVAT **đã có project**: `03_cvat_create_task.py` tự đồng bộ trước khi
+tạo task, vì sửa `labels.json` không lan sang project đã tạo — không đồng bộ thì CVAT từ
+chối nạp nhãn với lỗi *"Label 'x' is not registered for this task"*.
+
+| Tình huống | Script làm gì |
+|---|---|
+| `labels.json` có lớp project chưa biết | thêm vào project |
+| project có lớp thừa, **chưa ai gán nhãn** | xoá khỏi project |
+| project có lớp thừa, **đang có nhãn dùng** | giữ lại, báo rõ số nhãn và cách xử lý |
+
+Lớp đang được dùng không bao giờ bị xoá tự động — xoá là mất công sức người gán. Dùng
+`--keep-extra-labels` nếu muốn giữ cả lớp chưa ai dùng.
+
+Web **không nhân bản logic pipeline** — nó gọi lại đúng các script trong `scripts/`,
+nên chạy bằng web hay bằng dòng lệnh đều ra cùng kết quả. Mỗi lúc chỉ chạy một bước,
+vì các bước dùng chung `data/prototype/`.
+
+Xoá nguồn hay task **không** xoá file đã sinh ra từ nó — ảnh đã lấy mẫu và nhãn sơ bộ
+vẫn nằm trong `data/prototype/`, xoá tay khi cần.
+
+Server chỉ nghe trên `127.0.0.1` và **không có xác thực** — đây là công cụ chạy trên
+máy bạn, đừng phơi ra mạng ngoài.
+
 ## Chạy
 
 Một lệnh từ đầu tới cuối:
@@ -154,6 +213,7 @@ Hoặc chạy từng bước — mọi script đều có `--help`:
 setup.sh      cài đặt toàn bộ, chạy lại được nhiều lần   ─┐
 configs/      tham số pipeline, label spec, vùng bỏ qua   │
 scripts/      logic, đánh số theo bước                    │
+web/          web điều khiển (FastAPI + JS thuần)        │
   _common.py  helper dùng chung (không chạy trực tiếp)    ├─ vào Git
   tools/      tiện ích phụ trợ, không thuộc luồng chính   │
 docs/         guideline gán nhãn + ảnh minh hoạ           │
@@ -197,6 +257,7 @@ phải coi nhãn sơ bộ là chưa đáng tin.
 
 ## Tài liệu
 
+- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — chạy lần đầu, từng lệnh một
 - [`docs/labeling_guideline.md`](docs/labeling_guideline.md) — quy tắc gán nhãn, bắt buộc đọc trước khi review
 - [`docs/datasheet.md`](docs/datasheet.md) — datasheet của dataset phát hành
 - [`models/README.md`](models/README.md) — trọng số model

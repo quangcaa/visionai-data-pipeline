@@ -19,3 +19,6 @@ runs/
 
 # Artifact của từng lần chạy trên máy local
 reports/
+
+# Cấu hình của Claude Code trên máy lập trình viên
+.claude/

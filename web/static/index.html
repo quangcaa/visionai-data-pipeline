@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vision AI — Pipeline dữ liệu</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎞️</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>Pipeline dữ liệu Vision AI</h1>
+  <div id="services" class="services"></div>
+</header>
+
+<nav class="steps" id="stepnav"></nav>
+
+<main>
+
+<!-- 1 ─ NGUỒN ------------------------------------------------------------ -->
+<section id="sec-source" class="card">
+  <h2><span class="num">1</span> Nguồn dữ liệu</h2>
+
+  <div class="row">
+    <div class="col">
+      <h3>Tải video lên</h3>
+      <div id="drop" class="drop">
+        <input type="file" id="file" accept="video/*" hidden>
+        <p>Kéo video vào đây hoặc <button class="link" id="pick">chọn file</button></p>
+        <p class="hint" id="inboxdir"></p>
+      </div>
+      <div id="upprog" class="progress hidden"><div></div><span></span></div>
+
+      <h3>Có sẵn trong inbox</h3>
+      <ul id="inbox" class="filelist"></ul>
+    </div>
+
+    <div class="col">
+      <h3>Khai báo camera</h3>
+      <form id="srcform" class="form">
+        <label>camera_id
+          <input name="camera_id" placeholder="cam05" required pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,31}">
+        </label>
+        <label>Loại nguồn
+          <select name="kind">
+            <option value="video">video — file video, tự tách frame</option>
+            <option value="images">images — thư mục ảnh có sẵn</option>
+          </select>
+        </label>
+        <label>Đường dẫn (tương đối gốc repo)
+          <input name="path" id="srcpath" placeholder="data/inbox/nga-tu.mp4" required>
+        </label>
+        <div class="two">
+          <label>Thời tiết <input name="weather" placeholder="sunny"></label>
+          <label>Trạng thái camera <input name="camera_state" placeholder="stable"></label>
+        </div>
+        <label>Địa điểm (tuỳ chọn) <input name="location" placeholder="Ngã tư Lê Duẩn"></label>
+        <button class="primary" type="submit">Lưu nguồn</button>
+        <p class="hint">Ghi vào <code>configs/pipeline.yaml</code>, giữ nguyên comment.</p>
+      </form>
+    </div>
+  </div>
+
+  <h3>Nguồn đã khai</h3>
+  <div class="tablewrap"><table id="srctable" class="table"><tbody></tbody></table></div>
+  <div id="orphans" class="warnbox hidden"></div>
+</section>
+
+<!-- 2 ─ LỚP NHÃN --------------------------------------------------------- -->
+<section id="sec-labels" class="card">
+  <h2><span class="num">2</span> Lớp nhãn</h2>
+  <p class="hint">Mỗi bộ dữ liệu một bộ lớp khác nhau. Danh sách này đi vào CVAT khi tạo task,
+     và <strong>thứ tự chính là <code>class_id</code></strong> trong file nhãn YOLO.</p>
+
+  <div class="row">
+    <div class="col">
+      <h3>Danh sách lớp</h3>
+      <ul id="labellist" class="labellist"></ul>
+      <div class="runbar">
+        <input id="newlabel" placeholder="tên lớp mới" size="16">
+        <button id="addlabel">Thêm lớp</button>
+      </div>
+    </div>
+
+    <div class="col">
+      <h3>Ánh xạ lớp của model → lớp của bạn</h3>
+      <p id="modelinfo" class="hint"></p>
+      <table class="table"><tbody id="maplist"></tbody></table>
+      <div class="runbar">
+        <select id="newcoco"></select>
+        <span>→</span>
+        <select id="newcocolabel"></select>
+        <button id="addmap">Thêm ánh xạ</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="labelwarn" class="warnbox hidden"></div>
+  <div class="runbar">
+    <button class="primary" id="savelabels">Lưu lớp nhãn</button>
+    <button id="resetlabels">Hoàn tác</button>
+  </div>
+  <p class="hint">Ghi vào <code>configs/labels.json</code> và <code>class_map</code>
+     trong <code>configs/prelabel.yaml</code>.</p>
+</section>
+
+<!-- 3 ─ VÙNG BỎ QUA ------------------------------------------------------ -->
+<section id="sec-regions" class="card">
+  <h2><span class="num">3</span> Vùng bỏ qua</h2>
+  <p class="hint">Khoanh những vùng <strong>không gán nhãn</strong>: đường ở xa, bãi đỗ ven đường,
+     khu ngoài phạm vi. Dự đoán rơi vào đây bị loại trước khi lên CVAT.</p>
+
+  <div class="toolbar">
+    <label>Camera <select id="rcam"></select></label>
+    <label class="grow">Khung hình
+      <input type="range" id="rpos" min="0" max="100" value="10">
+    </label>
+    <span id="rposlabel" class="hint"></span>
+    <button id="rundo">Hoàn tác</button>
+    <button id="rclear">Xoá hết</button>
+    <button class="primary" id="rsave">Lưu vùng</button>
+  </div>
+
+  <div id="rwarn" class="warnbox hidden"></div>
+
+  <div id="canvaswrap" class="canvaswrap">
+    <canvas id="canvas"></canvas>
+    <div id="canvasmsg" class="canvasmsg">Chọn một camera để bắt đầu</div>
+  </div>
+  <p class="hint">Kéo chuột để vẽ vùng mới · Bấm vào vùng để chọn · <kbd>Delete</kbd> để xoá vùng đang chọn</p>
+</section>
+
+<!-- 4 ─ CHẠY ------------------------------------------------------------- -->
+<section id="sec-run" class="card">
+  <h2><span class="num">4</span> Chạy pipeline</h2>
+
+  <h3>Chọn nguồn để chạy</h3>
+  <div id="picksrc" class="picksrc"></div>
+
+  <h3>Tham số lấy mẫu</h3>
+  <form id="params" class="params">
+    <label>Lấy 1 frame mỗi
+      <input name="sample_every_n" type="number" min="1" step="1" required>
+    </label>
+    <label>Tối đa mỗi camera
+      <input name="max_per_camera" type="number" min="0" step="1" required>
+    </label>
+    <label>fps nguồn ảnh
+      <input name="source_fps" type="number" min="0.1" step="0.1" required>
+    </label>
+    <label>Mẫu tên file ảnh
+      <input name="image_glob" placeholder="*.jpg" required>
+    </label>
+    <button class="primary" type="submit">Lưu tham số</button>
+    <button type="button" id="paramsreset">Hoàn tác</button>
+    <p class="hint note">Ghi vào <code>sampling</code> trong <code>configs/pipeline.yaml</code>.
+       <code>0</code> ở “tối đa mỗi camera” nghĩa là không giới hạn.
+       fps chỉ dùng cho nguồn <code>images</code> — nguồn <code>video</code> đọc fps thật từ file.</p>
+  </form>
+
+  <div class="runbar">
+    <button class="step" data-step="ingest">Lấy mẫu</button>
+    <button class="step" data-step="prelabel">Gán nhãn sơ bộ</button>
+    <button class="step" data-step="package">Đóng gói</button>
+    <button class="step" data-step="cvat">Tạo task CVAT</button>
+    <label class="chk"><input type="checkbox" id="doupload" checked> upload MinIO</label>
+    <button class="ghost" id="runall">Chạy cả 4 bước</button>
+    <button class="danger hidden" id="cancel">Dừng</button>
+  </div>
+
+  <div class="logwrap">
+    <div class="loghead"><span id="jobtitle">Chưa chạy bước nào</span><button class="link" id="clearlog">xoá log</button></div>
+    <pre id="log" class="log"></pre>
+  </div>
+</section>
+
+<!-- 4 ─ CVAT ------------------------------------------------------------- -->
+<section id="sec-cvat" class="card">
+  <h2><span class="num">5</span> Soát và duyệt trên CVAT</h2>
+  <p class="hint">Người sửa mở job trong CVAT, chỉnh theo guideline rồi Finish.
+     Người duyệt đặt PASS. Chỉ job PASS mới vào bản phát hành.</p>
+  <div id="cvat" class="cvat"></div>
+</section>
+
+<!-- 5 ─ PHÁT HÀNH -------------------------------------------------------- -->
+<section id="sec-release" class="card">
+  <h2><span class="num">6</span> Phát hành</h2>
+  <div id="released" class="stats"></div>
+  <div class="runbar">
+    <label>Phiên bản <input id="version" placeholder="1.0.0" size="8" value="1.0.0"></label>
+    <label>Task <input id="reltask" placeholder="tất cả" size="6"></label>
+    <button class="step" data-step="release">Dựng dataset</button>
+    <button class="step" data-step="publish">Đóng phiên bản (DVC + tag)</button>
+  </div>
+  <p class="hint">Bước dựng chỉ lấy job đã PASS và dừng toàn bộ nếu thiếu nguồn gốc của bất kỳ ảnh nào.</p>
+</section>
+
+</main>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

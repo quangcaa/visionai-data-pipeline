@@ -143,8 +143,8 @@ step "Thư viện Python (requirements.txt)"
 MISSING=""
 if [ -x "$PY" ]; then
   # tên module khi import, không phải tên gói trên PyPI
-  for mod in PIL cv2 cvat_sdk kaggle minio numpy ultralytics yaml; do
-    "$PY" -c "import $mod" 2>/dev/null || MISSING="$MISSING $mod"
+  for mod in PIL cv2 cvat_sdk fastapi kaggle minio numpy ruamel.yaml ultralytics uvicorn yaml; do
+    "$PY" -c "import $mod" >/dev/null 2>&1 || MISSING="$MISSING $mod"
   done
   "$PY" -m dvc --version >/dev/null 2>&1 || MISSING="$MISSING dvc"
 fi
@@ -152,7 +152,7 @@ fi
 if [ ! -x "$PY" ]; then
   fail "bỏ qua — chưa có venv"
 elif [ -z "$MISSING" ]; then
-  skip "đủ cả 9 phụ thuộc"
+  skip "đủ cả 12 phụ thuộc"
 elif [ "$CHECK_ONLY" -eq 1 ]; then
   fail "thiếu:$MISSING"
 else
@@ -162,8 +162,8 @@ else
     && "$PY" -m pip install --quiet -r requirements.txt \
     || die "pip install thất bại — chạy lại không có --quiet để xem chi tiết"
   STILL=""
-  for mod in PIL cv2 cvat_sdk kaggle minio numpy ultralytics yaml; do
-    "$PY" -c "import $mod" 2>/dev/null || STILL="$STILL $mod"
+  for mod in PIL cv2 cvat_sdk fastapi kaggle minio numpy ruamel.yaml ultralytics uvicorn yaml; do
+    "$PY" -c "import $mod" >/dev/null 2>&1 || STILL="$STILL $mod"
   done
   [ -z "$STILL" ] && ok "đã cài đủ" || fail "vẫn thiếu:$STILL"
 fi
@@ -292,7 +292,11 @@ fi
 
 cat <<EOF
 
-${B}Tiếp theo${N} — lấy dữ liệu vào ${B}data/inbox/${N} rồi khai trong ${B}configs/pipeline.yaml${N}:
+${B}Mở web điều khiển${N} — làm mọi bước không cần gõ lệnh:
+
+  .venv/bin/python -m web.app        ${D}# rồi mở http://127.0.0.1:8000${N}
+
+${B}Hoặc dùng dòng lệnh${N} — lấy dữ liệu vào ${B}data/inbox/${N} rồi khai trong ${B}configs/pipeline.yaml${N}:
 
   ${D}# dùng UA-DETRAC để chạy thử (tải 9,3 GB, cần token Kaggle trong .env)${N}
   .venv/bin/python scripts/tools/download_detrac.py
