@@ -51,15 +51,84 @@ def filter_coco_zip(src_zip: Path, keep_names: set[str], dst_zip: Path) -> tuple
     return len(images), len(annotations)
 
 
+def sync_project_labels(project, label_spec: list, models, prune: bool = True) -> None:
+    """Thêm vào project những lớp có trong labels.json mà project chưa biết.
+
+    Sửa configs/labels.json KHÔNG tự lan sang project đã tạo trên CVAT. Không đồng
+    bộ trước thì CVAT từ chối nạp nhãn ("Label 'x' is not registered for this task")
+    — và task rỗng đã kịp được tạo, thành rác.
+
+    Lớp thừa (có trong project, không có trong labels.json) được xoá nếu CHƯA AI DÙNG.
+    Còn nhãn dùng tới thì giữ lại và báo rõ — xoá đi là mất công sức người gán.
+    """
+    have = {lb.name for lb in project.get_labels()}
+    want = [lb["name"] for lb in label_spec]
+
+    missing = [lb for lb in label_spec if lb["name"] not in have]
+    if missing:
+        names = ", ".join(lb["name"] for lb in missing)
+        try:
+            project.update(models.PatchedProjectWriteRequest(
+                labels=[models.PatchedLabelRequest(**lb) for lb in missing]))
+        except Exception as exc:  # noqa: BLE001
+            die(f"không thêm được lớp [{names}] vào project '{project.name}': {exc}")
+        log(f"Đã thêm lớp mới vào project: {names}")
+
+    labels = {lb.name: lb for lb in project.get_labels()}
+    extra = sorted(set(labels) - set(want))
+    if extra:
+        used = count_label_usage(project, {labels[n].id: n for n in extra})
+        unused = [n for n in extra if not used.get(n)]
+        blocked = {n: used[n] for n in extra if used.get(n)}
+
+        if unused and prune:
+            try:
+                project.update(models.PatchedProjectWriteRequest(
+                    labels=[models.PatchedLabelRequest(id=labels[n].id, deleted=True)
+                            for n in unused]))
+                log(f"Đã xoá khỏi project lớp thừa, chưa ai dùng: {', '.join(unused)}")
+            except Exception as exc:  # noqa: BLE001
+                log(f"CẢNH BÁO: không xoá được lớp thừa {unused}: {exc}")
+        elif unused:
+            log(f"Lớp thừa chưa ai dùng, giữ lại theo --keep-extra-labels: {', '.join(unused)}")
+
+        if blocked:
+            detail = ", ".join(f"{n} ({c} nhãn)" for n, c in blocked.items())
+            log(f"CẢNH BÁO: giữ lại lớp thừa vì đang có nhãn dùng tới: {detail}. "
+                f"Xoá đi là mất số nhãn đó — hãy đổi chúng sang lớp khác trong CVAT trước, "
+                f"nếu không bước phát hành sẽ từ chối cả lô")
+
+    still = [n for n in want if n not in {lb.name for lb in project.get_labels()}]
+    if still:
+        die(f"project '{project.name}' vẫn thiếu lớp: {', '.join(still)}")
+
+
+def count_label_usage(project, label_ids: dict) -> dict:
+    """Đếm số nhãn đang dùng từng label_id, trên mọi task của project."""
+    from collections import Counter
+
+    n = Counter()
+    for task in project.get_tasks():
+        ann = task.get_annotations()
+        for shape in ann.shapes:
+            n[shape.label_id] += 1
+        for track in ann.tracks:
+            n[track.label_id] += 1
+    return {name: n[lid] for lid, name in label_ids.items()}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_io_args(ap, "config", "labels")
     ap.add_argument("--project-name", default=None,
                     help="mặc định lấy cvat.project_name trong pipeline.yaml")
     ap.add_argument("--task-name", default=None)
-    ap.add_argument("--camera", default=None, help="chỉ lấy ảnh của một camera, vd cam03")
+    ap.add_argument("--camera", action="append",
+                    help="chỉ lấy ảnh của camera này; lặp lại để chọn nhiều")
     ap.add_argument("--segment-size", type=int, default=50, help="số ảnh mỗi job")
     ap.add_argument("--no-annotations", action="store_true", help="tạo task trống, không nạp nhãn sơ bộ")
+    ap.add_argument("--keep-extra-labels", action="store_true",
+                    help="giữ lại lớp có trong project nhưng không có trong labels.json")
     args = ap.parse_args()
 
     try:
@@ -74,9 +143,11 @@ def main() -> None:
 
     images = sorted(img_dir.glob("*.jpg"))
     if args.camera:
-        images = [p for p in images if p.name.startswith(f"{args.camera}_")]
+        prefixes = tuple(f"{c}_" for c in args.camera)
+        images = [p for p in images if p.name.startswith(prefixes)]
     if not images:
-        die(f"Không có ảnh nào ở {img_dir}" + (f" cho camera {args.camera}" if args.camera else ""))
+        die(f"Không có ảnh nào ở {img_dir}"
+            + (f" cho camera {', '.join(args.camera)}" if args.camera else ""))
 
     label_spec = load_json(args.labels)
 
@@ -115,7 +186,8 @@ def main() -> None:
     )
 
     batch_label = (cfg.get("dataset") or {}).get("name", "batch")
-    task_name = args.task_name or f"{batch_label}-{args.camera or 'all'}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    cam_label = "-".join(args.camera) if args.camera else "all"
+    task_name = args.task_name or f"{batch_label}-{cam_label}-{datetime.now().strftime('%Y%m%d-%H%M')}"
 
     log(f"Kết nối {host}:{port} với tài khoản '{user}'...")
     with cvat_client() as client:
@@ -133,18 +205,26 @@ def main() -> None:
             log(f"Đã tạo project '{project.name}' (id={project.id})")
         else:
             log(f"Dùng lại project '{project.name}' (id={project.id})")
+            sync_project_labels(project, label_spec, models,
+                                prune=not args.keep_extra_labels)
 
         log(f"Tạo task '{task_name}' với {len(images)} ảnh, segment_size={args.segment_size}...")
-        task = client.tasks.create_from_data(
-            spec=models.TaskWriteRequest(
-                name=task_name,
-                project_id=project.id,
-                segment_size=args.segment_size,
-            ),
-            resources=[str(p) for p in images],
-            annotation_path=str(ann_zip) if use_ann else "",
-            annotation_format="COCO 1.0",
-        )
+        try:
+            task = client.tasks.create_from_data(
+                spec=models.TaskWriteRequest(
+                    name=task_name,
+                    project_id=project.id,
+                    segment_size=args.segment_size,
+                ),
+                resources=[str(p) for p in images],
+                annotation_path=str(ann_zip) if use_ann else "",
+                annotation_format="COCO 1.0",
+            )
+        except Exception as exc:  # noqa: BLE001
+            # CVAT tạo task trước rồi mới nạp nhãn; nạp hỏng là task rỗng nằm lại
+            die(f"tạo task thất bại: {exc}\n"
+                f"  CVAT có thể đã tạo task rỗng — kiểm tra ở {host}:{port}/tasks "
+                f"và xoá bằng nút 'Xoá task' trên web")
         log(f"Đã tạo task id={task.id}")
 
         # Ghi dấu vết nguồn gốc lên task. Không chặn luồng nếu CVAT từ chối,

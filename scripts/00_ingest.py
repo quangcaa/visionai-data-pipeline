@@ -17,7 +17,7 @@ Nguyên tắc:
 Dùng:
     .venv/bin/python scripts/00_ingest.py
     .venv/bin/python scripts/00_ingest.py --force
-    .venv/bin/python scripts/00_ingest.py --camera cam05     # chỉ một nguồn
+    .venv/bin/python scripts/00_ingest.py --camera cam01 --camera cam03   # chỉ vài nguồn
     .venv/bin/python scripts/00_ingest.py --upload           # đẩy lên MinIO
 """
 
@@ -96,7 +96,8 @@ def sample_video(path: Path, every: int, limit: int):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_io_args(ap, "config")
-    ap.add_argument("--camera", help="chỉ nạp một camera, vd cam05")
+    ap.add_argument("--camera", action="append",
+                    help="chỉ nạp camera này; lặp lại để chọn nhiều, vd --camera cam01 --camera cam03")
     ap.add_argument("--force", action="store_true", help="xoá lô cũ và lấy mẫu lại")
     ap.add_argument("--upload", action="store_true", help="upload lên bucket MinIO sau khi lấy mẫu")
     args = ap.parse_args()
@@ -108,10 +109,13 @@ def main() -> None:
 
     sources = cfg.get("sources") or []
     if args.camera:
-        sources = [s for s in sources if s["camera_id"] == args.camera]
+        want = set(args.camera)
+        missing = want - {s["camera_id"] for s in sources}
+        if missing:
+            die(f"không có nguồn nào tên: {', '.join(sorted(missing))}")
+        sources = [s for s in sources if s["camera_id"] in want]
     if not sources:
-        die("không có nguồn nào trong configs/pipeline.yaml"
-            + (f" cho camera {args.camera}" if args.camera else ""))
+        die("không có nguồn nào trong configs/pipeline.yaml")
 
     if out_images.exists() and any(out_images.iterdir()):
         if not args.force:

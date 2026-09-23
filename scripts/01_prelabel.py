@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import shutil
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -47,8 +48,12 @@ def main() -> None:
 
     if not img_dir.is_dir() or not any(img_dir.glob("*.jpg")):
         die(f"Chưa có ảnh ở {img_dir}. Chạy scripts/00_ingest.py trước.")
-    if out_dir.exists() and any(out_dir.glob("*.txt")) and not args.force:
-        die(f"Đã có nhãn sơ bộ ở {out_dir}. Dùng --force để chạy lại.")
+    if out_dir.exists() and any(out_dir.glob("*.txt")):
+        if not args.force:
+            die(f"Đã có nhãn sơ bộ ở {out_dir}. Dùng --force để chạy lại.")
+        # Xoá sạch chứ không ghi đè: lô trước có ảnh mà lô này không có thì nhãn
+        # của nó nằm lại, vừa tốn đĩa vừa có thể bị đọc nhầm nếu tên frame trùng.
+        shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     classes = load_label_spec(args.labels)

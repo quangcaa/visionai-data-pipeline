@@ -35,7 +35,7 @@ PY = sys.executable
 
 STEPS = ["ingest", "prelabel", "package", "cvat", "review", "release", "publish"]
 STEP_HELP = {
-    "ingest":   "00 nạp nguồn (video / thư mục ảnh) + lấy mẫu frame + upload MinIO",
+    "ingest":   "00 lấy mẫu frame từ nguồn (video / thư mục ảnh) + upload MinIO",
     "prelabel": "01 gán nhãn sơ bộ YOLO26",
     "package":  "02 đóng gói nhãn sơ bộ cho CVAT",
     "cvat":     "03 tạo task CVAT + nạp nhãn sơ bộ",

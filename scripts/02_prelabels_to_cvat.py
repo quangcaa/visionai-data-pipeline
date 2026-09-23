@@ -32,6 +32,29 @@ from _common import (REPO_ROOT, add_io_args, boxes_in_ignored, ignore_regions_xy
 log, die = logger("to-cvat")
 
 
+def warn_stale_regions(cfg: dict, ignore: dict) -> None:
+    """Báo nếu vùng bỏ qua được vẽ cho một nguồn khác với nguồn đang khai.
+
+    camera_id dùng lại được, nên vùng của camera cũ có thể âm thầm áp lên dữ liệu
+    mới. Không chặn — chỉ nói to, vì đôi khi đúng là cùng một camera.
+    """
+    from _common import REPO_ROOT, load_json
+
+    path = REPO_ROOT / (cfg.get("ignore_regions") or {}).get("file", "configs/ignore_regions.json")
+    if not path.is_file():
+        return
+    entries = (load_json(path).get("cameras") or {})
+    by_cam = {s["camera_id"]: s.get("path") for s in (cfg.get("sources") or [])}
+    for camera_id, n in ((c, len(v)) for c, v in ignore.items() if len(v)):
+        drawn_for = (entries.get(camera_id) or {}).get("source")
+        current = by_cam.get(camera_id)
+        if current is None:
+            log(f"CẢNH BÁO: {camera_id} có {n} vùng bỏ qua nhưng không còn nguồn nào khai báo")
+        elif drawn_for not in (None, current):
+            log(f"CẢNH BÁO: {n} vùng bỏ qua của {camera_id} được vẽ cho '{drawn_for}', "
+                f"nhưng nguồn hiện tại là '{current}' — vẽ lại hoặc xoá vùng cũ")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_io_args(ap, "config", "prelabel-config", "labels")
@@ -58,6 +81,7 @@ def main() -> None:
 
     records = read_manifest(work)
     ignore = load_ignore_regions(cfg)
+    warn_stale_regions(cfg, ignore)
 
     # CVAT khớp ảnh theo file_name, nên giữ đúng tên file trong task.
     coco = {
