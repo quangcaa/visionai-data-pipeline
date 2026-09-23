@@ -1,6 +1,8 @@
 [
-  {"name": "car",    "type": "rectangle", "attributes": []},
-  {"name": "bus",    "type": "rectangle", "attributes": []},
-  {"name": "van",    "type": "rectangle", "attributes": []},
-  {"name": "others", "type": "rectangle", "attributes": []}
+  {"name": "car", "type": "rectangle", "attributes": []},
+  {"name": "bus", "type": "rectangle", "attributes": []},
+  {"name": "truck", "type": "rectangle", "attributes": []},
+  {"name": "motorcycle", "type": "rectangle", "attributes": []},
+  {"name": "others", "type": "rectangle", "attributes": []},
+  {"name": "person", "type": "rectangle", "attributes": []}
 ]

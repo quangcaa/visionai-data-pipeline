@@ -11,32 +11,12 @@ paths:
 # `scene` là metadata tự khai, tuỳ chọn — đi thẳng vào metadata.jsonl của bản phát hành.
 sources:
   - camera_id: cam01
-    kind: images
-    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_20011
-    scene: {weather: sunny, camera_state: unstable}
-  - camera_id: cam02
-    kind: images
-    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_40131
-    scene: {weather: cloudy, camera_state: unstable}
-  - camera_id: cam03
-    kind: images
-    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_39761
-    scene: {weather: night, camera_state: stable}
-  - camera_id: cam04
-    kind: images
-    path: data/raw/ua-detrac/DETRAC-Images/DETRAC-Images/MVI_63521
-    scene: {weather: rainy, camera_state: stable}
-
-  # Ví dụ nguồn video — bỏ comment và sửa đường dẫn khi có dữ liệu mới:
-  # - camera_id: cam05
-  #   kind: video
-  #   path: data/inbox/nga-tu-le-duan.mp4
-  #   scene: {weather: sunny, location: "Lê Duẩn"}
-
+    kind: video
+    path: data/inbox/IMG_8491.MOV
 sampling:
   source_fps: 25          # fps giả định cho nguồn `images`; nguồn `video` đọc fps thật từ file
   sample_every_n: 25      # lấy 1 frame mỗi N frame
-  max_per_camera: 50      # giới hạn mỗi camera (0 = không giới hạn)
+  max_per_camera: 100     # giới hạn mỗi camera (0 = không giới hạn)
   image_glob: "*.jpg"     # mẫu tên file cho nguồn `images`
 
 # Vùng ảnh không gán nhãn. Dữ liệu nằm ở file riêng vì sẽ do công cụ web sinh ra.

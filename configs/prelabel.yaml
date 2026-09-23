@@ -13,11 +13,10 @@ max_det: 100
 class_map:
   2: car          # COCO car
   5: bus          # COCO bus
-  7: van          # COCO truck  -> van
-  3: others       # COCO motorcycle
-  1: others       # COCO bicycle
-
-# Lọc khi đóng gói nhãn sơ bộ cho CVAT (scripts/02_prelabels_to_cvat.py).
+  3: motorcycle   # lớp motorcycle của model
+  7: truck        # lớp truck của model
+  1: others       # lớp bicycle của model
+  0: person       # lớp person của model
 export:
   min_conf: 0.25         # bỏ box có conf thấp hơn ngưỡng này
   drop_in_ignore: true   # bỏ box nằm trong vùng bỏ qua (configs/ignore_regions.json)
