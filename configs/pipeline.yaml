@@ -9,10 +9,19 @@ paths:
 #   kind: images  -> path trỏ tới thư mục ảnh đã tách sẵn
 # sequence_id mặc định lấy theo tên file/thư mục, ghi đè được bằng khoá `sequence`.
 # `scene` là metadata tự khai, tuỳ chọn — đi thẳng vào metadata.jsonl của bản phát hành.
-sources:
-  - camera_id: cam01
-    kind: video
-    path: data/inbox/IMG_8491.MOV
+# Chưa khai nguồn nào. Thêm ở khu 1 của web, hoặc điền tay theo ví dụ dưới.
+sources: []
+
+#   - camera_id: cam01
+#     kind: video                       # video = file video, tự tách frame
+#     path: data/inbox/video-cua-ban.mp4
+#     scene: {weather: sunny}           # metadata tự khai, tuỳ chọn
+#
+#   - camera_id: cam02
+#     kind: images                      # images = thư mục ảnh đã tách sẵn
+#     path: data/inbox/anh-nga-tu/
+#     scene: {weather: cloudy, camera_state: stable}
+
 sampling:
   source_fps: 25          # fps giả định cho nguồn `images`; nguồn `video` đọc fps thật từ file
   sample_every_n: 25      # lấy 1 frame mỗi N frame

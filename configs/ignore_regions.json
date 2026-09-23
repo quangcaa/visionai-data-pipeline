@@ -7,24 +7,5 @@
     "File này sẽ do công cụ web sinh ra; giữ nguyên cấu trúc khi sửa tay.",
     "Trường 'source' ghi đường dẫn nguồn lúc vẽ vùng: camera_id dùng lại được, nên vùng vẽ cho camera này sẽ vô nghĩa nếu id đó được gán cho dữ liệu khác."
   ],
-  "cameras": {
-    "cam01": {
-      "note": "",
-      "source": "data/inbox/IMG_8491.MOV",
-      "regions": [
-        {
-          "x1": 0.83241,
-          "y1": 0.02064,
-          "x2": 0.9845,
-          "y2": 0.99049
-        },
-        {
-          "x1": 0.00498,
-          "y1": 0.0202,
-          "x2": 0.1636,
-          "y2": 0.97472
-        }
-      ]
-    }
-  }
+  "cameras": {}
 }
